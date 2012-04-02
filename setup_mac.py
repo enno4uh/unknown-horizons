@@ -22,8 +22,10 @@
 # ###################################################
 
 # usage: 
+# make sure to have build uh properly (python setup.py build)
 # copy the full content folder into development/src/Contents/Resources/
 # the result should be development/src/Contents/Resources/content/
+#
 # moreover copy the fife dir into the current dir
 # details can be found at http://wiki.unknown-horizons.org/w/MacOS_build_notes
 
