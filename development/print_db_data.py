@@ -61,6 +61,9 @@ def get_settler_name(incr):
 	return db("SELECT name FROM settler_level WHERE level = ?", incr)[0][0]
 
 def get_prod_line(id, type):
+	print 'Data has been moved, this view is unavailable for now'
+	return
+	from horizons.util.python.roman_numerals import int_to_roman
 	consumption = db("SELECT resource, amount FROM production \
                       WHERE production_line = ? AND amount < 0 ORDER BY amount ASC", id)
 	production = db("SELECT resource, amount FROM production \
@@ -71,18 +74,20 @@ def get_prod_line(id, type):
 		return (consumption[0], production[0])
 
 def print_production_lines():
+	print 'Data has been moved, this view is unavailable for now'
+	return
 	print 'Production Lines:'
 	for (id, changes_anim, object, time, default) in db("SELECT id, changes_animation, object_id, time, enabled_by_default FROM production_line ORDER BY object_id"):
 		(consumption,production) = get_prod_line(id, list)
 
 		str = 'Line %2s of %2s:%-16s %5s sec %s %s ' % (id, object, get_obj_name(object), time, ('D' if default else ' '), ('C' if changes_anim else ' '))
 
-		if len(consumption) > 0:
+		if consumption:
 			str += 'uses: '
 			for res, amount in consumption:
 				str += '%2s %-16s ' % (-amount, get_res_name(res) + '(%s)' % res)
 
-		if len(production) > 0:
+		if production:
 			str += '\t=> '
 			for res, amount in production:
 				str +=  '%2s %-16s ' % (amount, get_res_name(res) + '(%s)' % res)
@@ -139,9 +144,10 @@ def print_building():
 		 b.size[0], b.size[1], b.radius, b.baseclass)
 
 def print_unit():
-	print "Units (id: name from class)"
-	for id, name, c_type, c_package in db("SELECT id, name, class_type, class_package FROM unit"):
-		print "%2s: %-22s from %s.%s" % ((id - UNITS.DIFFERENCE_BUILDING_UNIT_ID), name, c_package, c_type)
+	print "Units (id: name (radius) from class)"
+	for u in Entities.units.itervalues():
+		print "%2s: %-22s (%2s) from %s" % ((u.id - UNITS.DIFFERENCE_BUILDING_UNIT_ID),
+			u.name, u.radius, u.baseclass)
 	print "Add %s to each ID if you want to use them." % UNITS.DIFFERENCE_BUILDING_UNIT_ID
 
 def print_storage():
@@ -199,6 +205,8 @@ def print_collector_restrictions():
 			print '\t%s(%s)' % (get_obj_name(obj),obj)
 
 def print_increment_data():
+	print 'Data has been moved, this view is unavailable for now'
+	return
 	from horizons.util.python.roman_numerals import int_to_roman
 	upgrade_increments = xrange(1, SETTLER.CURRENT_MAX_INCR+1)
 	print '%15s %s %s  %s' % ('increment', 'max_inh', 'base_tax', 'upgrade_prod_line')

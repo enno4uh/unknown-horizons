@@ -28,13 +28,13 @@ from horizons.util import WorldObject, WeakList
 from horizons.util.lastactiveplayersettlementmanager import LastActivePlayerSettlementManager
 from horizons.constants import LAYERS
 from horizons.messaging import HoverInstancesChanged
-from horizons.messaging import MessageBus
 from horizons.extscheduler import ExtScheduler
 
 from fife.extensions.pychan.widgets import Icon
 
 class NavigationTool(CursorTool):
 	"""Navigation Class to process mouse actions ingame"""
+
 
 	last_event_pos = fife.ScreenPoint(0, 0) # last received mouse event position, fife.ScreenPoint
 
@@ -50,7 +50,8 @@ class NavigationTool(CursorTool):
 		self._hover_instances_update_scheduled = False
 		self.middle_scroll_active = False
 
-		class CmdListener(fife.ICommandListener): pass
+		class CmdListener(fife.ICommandListener):
+			pass
 		self.cmdlist = CmdListener()
 		horizons.main.fife.eventmanager.addCommandListener(self.cmdlist)
 		self.cmdlist.onCommand = self.onCommand
@@ -80,7 +81,7 @@ class NavigationTool(CursorTool):
 				self.cursor_tool = cursor_tool
 				self.enabled = False
 
-				self.icon = Icon()
+				self.icon = Icon(position=(1, 1)) # 0, 0 is currently not supported by tooltips
 
 			def toggle(self):
 				self.enabled = not self.enabled
@@ -89,7 +90,7 @@ class NavigationTool(CursorTool):
 
 			def show_evt(self, evt):
 				if self.enabled:
-					x, y = self.cursor_tool.get_world_location_from_event(evt).to_tuple()
+					x, y = self.cursor_tool.get_world_location(evt).to_tuple()
 					self.icon.helptext = u'%f, %f ' % (x, y) + _("Press H to remove this hint")
 					self.icon.position_tooltip(evt)
 					self.icon.show_tooltip()
@@ -130,11 +131,13 @@ class NavigationTool(CursorTool):
 			return
 
 		self.tooltip.show_evt(evt)
-		mousepoint = fife.ScreenPoint(evt.getX(), evt.getY())
-		self.__class__.last_event_pos = mousepoint
+		# don't overwrite this last_event_post instance, due to class hierarchy, it would write to the lowest class
+		# (e.g. selectiontool, and the attribute in NavigationTool would be left unchanged)
+		self.__class__.last_event_pos.set(evt.getX(), evt.getY(), 0)
+		mousepoint = self.__class__.last_event_pos
 
 		# Status menu update
-		current = self.get_exact_world_location_from_event(evt)
+		current = self.get_exact_world_location(evt)
 
 		distance_ge = lambda a, b, epsilon : abs((a.x-b.x)**2 + (a.y-b.y)**2) >= epsilon**2
 
@@ -189,9 +192,13 @@ class NavigationTool(CursorTool):
 		                     fife.CMD_MOUSE_FOCUS_LOST,
 		                     fife.CMD_INPUT_FOCUS_LOST)
 		if command.getCommandType() in STOP_SCROLLING_ON:
-			# a random, unreproducible crash has session set to None. Check because it doesn't hurt.
-			if self.session is not None:
+			# it has been randomly observed twice that this code is reached with session being None or
+			# partly deinitialised. Since it is unknown how fife handles this and why
+			# removeCommandListener in remove() doesn't prevent further calls, we have to catch and ignore the error
+			try:
 				self.session.view.autoscroll(0, 0) # stop autoscroll
+			except AttributeError:
+				pass
 
 	def get_hover_instances(self, where, layers=None):
 		"""
@@ -204,8 +211,9 @@ class NavigationTool(CursorTool):
 
 		all_instances = []
 		for layer in layers:
-			instances = self.session.view.cam.getMatchingInstances(\
-		    fife.ScreenPoint(where.getX(), where.getY()), self.session.view.layers[layer], False) # False for accurate
+			instances = self.session.view.cam.getMatchingInstances(
+				fife.ScreenPoint(where.getX(), where.getY()),
+				self.session.view.layers[layer], False) # False for accurate
 			all_instances.extend(instances)
 
 		hover_instances = []
@@ -237,7 +245,8 @@ class NavigationTool(CursorTool):
 		At most called in a certain interval, not after every mouse move in
 		order to prevent delays."""
 		self._hover_instances_update_scheduled = False
-		where = fife.Point(self.last_event_pos.x, self.last_event_pos.y)
+		where = fife.Point(self.__class__.last_event_pos.x, self.__class__.last_event_pos.y)
+
 		instances = set(self.get_hover_instances(where))
 		# only send when there were actual changes
 		if instances != set(self.__class__.last_hover_instances):

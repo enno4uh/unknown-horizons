@@ -25,23 +25,27 @@ from fife import fife
 from fife.extensions.pychan.widgets import Icon
 
 from horizons.world.status import StatusIcon
-from horizons.constants import LAYERS
 from horizons.messaging import AddStatusIcon, RemoveStatusIcon, WorldObjectDeleted, HoverInstancesChanged
+from horizons.gui.mousetools import NavigationTool
 
 class StatusIconManager(object):
 	"""Manager class that manages all status icons. It listenes to AddStatusIcon
 	and RemoveStatusIcon messages on the main message bus"""
 
-	def __init__(self, session):
-		self.session = session
+	def __init__(self, renderer, layer):
+		"""
+		@param renderer: Renderer used to render the icons
+		@param layer: map layer, needed to place icon
+		"""
+		self.layer = layer
+		self.renderer = renderer
+
 		# {instance: [list of icons]}
 		self.icons = {}
-		# Renderer used to render the icons
-		self.renderer = self.session.view.renderer['GenericRenderer']
 
 		self.tooltip_instance = None # no weakref:
 		# we need to remove the tooltip always anyway, and along with it the entry here
-		self.tooltip_icon = Icon()
+		self.tooltip_icon = Icon(position=(1, 1)) # 0, 0 is currently not supported by tooltips
 
 		AddStatusIcon.subscribe(self.on_add_icon_message)
 		HoverInstancesChanged.subscribe(self.on_hover_instances_changed)
@@ -55,7 +59,6 @@ class StatusIconManager(object):
 
 		self.renderer = None
 		self.icons = None
-		self.session = None
 
 		AddStatusIcon.unsubscribe(self.on_add_icon_message)
 		HoverInstancesChanged.unsubscribe(self.on_hover_instances_changed)
@@ -75,6 +78,9 @@ class StatusIconManager(object):
 		# Now render the most important one
 		self.__render_status(icon_instance, self.icons[icon_instance][0])
 
+		if self.tooltip_instance is not None and self.tooltip_instance is icon_instance: # possibly have to update tooltip
+			self.on_hover_instances_changed( HoverInstancesChanged(self, [self.tooltip_instance]) )
+
 	def on_worldobject_deleted_message(self, message):
 		assert isinstance(message, WorldObjectDeleted)
 		# remove icon
@@ -83,7 +89,7 @@ class StatusIconManager(object):
 			del self.icons[message.worldobject]
 		# remove icon tooltip
 		if message.worldobject is self.tooltip_instance:
-			self.on_hover_instances_changed( HoverInstancesChanged(self, set()) )
+			self.on_hover_instances_changed( HoverInstancesChanged(self, []) )
 
 	def on_remove_icon_message(self, message):
 		"""Called by the MessageBus with RemoveStatusIcon messages."""
@@ -93,14 +99,17 @@ class StatusIconManager(object):
 			for registered_icon in self.icons[icon_instance][:]:
 				if message.icon_class is registered_icon.__class__:
 					self.icons[icon_instance].remove(registered_icon)
-					if len(self.icons[icon_instance]) == 0:
+					if not self.icons[icon_instance]:
 						# No icon left for this building, remove it
 						self.renderer.removeAll(self.get_status_string(icon_instance))
 						del self.icons[icon_instance]
 					else:
 						# Render next icon
 						self.__render_status(icon_instance, self.icons[icon_instance][0])
-					return
+					break
+
+			if self.tooltip_instance is not None and self.tooltip_instance is icon_instance: # possibly have to update tooltip
+				self.on_hover_instances_changed( HoverInstancesChanged(self, [self.tooltip_instance]) )
 
 	def __render_status(self, instance, status):
 		status_string = self.get_status_string(instance)
@@ -111,12 +120,11 @@ class StatusIconManager(object):
 		# pixel-offset on screen (will be constant across zoom-levels)
 		rel = fife.Point(0, -30)
 
-		layer = self.session.view.layers[LAYERS.OBJECTS]
 
 		pos = instance.position
 
 		# trial and error has brought me to this (it's supposed to hit the center)
-		loc = fife.Location(layer)
+		loc = fife.Location(self.layer)
 		loc.setExactLayerCoordinates(
 		  fife.ExactModelCoordinate(
 		    pos.origin.x + float(pos.width) / 4,
@@ -145,9 +153,9 @@ class StatusIconManager(object):
 		# only those that have icons
 		instances = (i for i in instances if i in self.icons)
 		# and belong to the player
-		instances = [i for i in instances if \
-		             hasattr(i, "owner" ) and \
-		             hasattr(i.owner, "is_local_player") and \
+		instances = [i for i in instances if
+		             hasattr(i, "owner" ) and
+		             hasattr(i.owner, "is_local_player") and
 		             i.owner.is_local_player]
 
 		if not instances:
@@ -163,6 +171,6 @@ class StatusIconManager(object):
 
 			self.tooltip_icon.helptext = icon.helptext
 
-			pos = self.session.cursor.last_event_pos
+			pos = NavigationTool.last_event_pos
 			self.tooltip_icon.position_tooltip( (pos.x, pos.y) )
 			self.tooltip_icon.show_tooltip()

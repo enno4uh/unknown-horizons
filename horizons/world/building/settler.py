@@ -29,7 +29,7 @@ from horizons.world.building.building import BasicBuilding
 from horizons.world.building.buildable import BuildableRect, BuildableSingle
 from horizons.constants import RES, BUILDINGS, GAME, TIER
 from horizons.world.building.buildingresourcehandler import BuildingResourceHandler
-from horizons.world.production.production import SettlerProduction, SingleUseProduction
+from horizons.world.production.production import SettlerProduction
 from horizons.command.building import Build
 from horizons.util import Callback
 from horizons.util.pathfinding.pather import StaticPather
@@ -39,6 +39,7 @@ from horizons.world.status import SettlerUnhappyStatus
 from horizons.world.production.producer import Producer
 from horizons.messaging import AddStatusIcon, RemoveStatusIcon, SettlerUpdate, SettlerInhabitantsChanged, UpgradePermissionsChanged
 
+
 class SettlerRuin(BasicBuilding, BuildableSingle):
 	"""Building that appears when a settler got unhappy. The building does nothing.
 
@@ -47,6 +48,7 @@ class SettlerRuin(BasicBuilding, BuildableSingle):
 	"""
 	buildable_upon = True
 	walkable = True
+
 
 class Settler(BuildableRect, BuildingResourceHandler, BasicBuilding):
 	"""Represents a settlers house, that uses resources and creates inhabitants."""
@@ -64,11 +66,12 @@ class Settler(BuildableRect, BuildingResourceHandler, BasicBuilding):
 		kwargs['level'] = self.__class__.default_level_on_build # settlers always start in first level
 		super(Settler, self).__init__(x=x, y=y, owner=owner, instance=instance, **kwargs)
 
-	def __init(self, loading = False, last_tax_payed=0):
+	def __init(self, loading=False, last_tax_payed=0):
 		self.level_max = TIER.CURRENT_MAX # for now
 		self._update_level_data(loading=loading, initial=True)
 		self.last_tax_payed = last_tax_payed
 		UpgradePermissionsChanged.subscribe(self._on_change_upgrade_permissions, sender=self.settlement)
+		self._upgrade_production = None # referenced here for quick access
 
 	def initialize(self):
 		super(Settler, self).initialize()
@@ -86,10 +89,10 @@ class Settler(BuildableRect, BuildingResourceHandler, BasicBuilding):
 
 	def save(self, db):
 		super(Settler, self).save(db)
-		db("INSERT INTO settler(rowid, inhabitants, last_tax_payed) VALUES (?, ?, ?)", \
+		db("INSERT INTO settler(rowid, inhabitants, last_tax_payed) VALUES (?, ?, ?)",
 		   self.worldid, self.inhabitants, self.last_tax_payed)
 		remaining_ticks = Scheduler().get_remaining_ticks(self, self._tick)
-		db("INSERT INTO remaining_ticks_of_month(rowid, ticks) VALUES (?, ?)", \
+		db("INSERT INTO remaining_ticks_of_month(rowid, ticks) VALUES (?, ?)",
 		   self.worldid, remaining_ticks)
 
 	def load(self, db, worldid):
@@ -105,31 +108,47 @@ class Settler(BuildableRect, BuildingResourceHandler, BasicBuilding):
 
 	def _load_upgrade_data(self, db):
 		"""Load the upgrade production and relevant stored resources"""
-		upgrade_material_production = self._get_upgrade_production()
-		if upgrade_material_production is None:
+		upgrade_material_prodline = SettlerUpgradeData.get_production_line_id(self.level+1)
+		if not self.get_component(Producer).has_production_line(upgrade_material_prodline):
 			return
 
+		self._upgrade_production = self.get_component(Producer)._get_production(upgrade_material_prodline)
+
+		# readd the res we already had, they can't be loaded since storage slot limits for
+		# the special resources aren't saved
 		resources = {}
 		for resource, amount in db.get_storage_rowids_by_ownerid(self.worldid):
 			resources[resource] = amount
 
-		# set limits to what we need
-		for res, amount in upgrade_material_production.get_consumed_resources().iteritems():
+		for res, amount in self._upgrade_production.get_consumed_resources().iteritems():
+			# set limits to what we need
 			self.get_component(StorageComponent).inventory.add_resource_slot(res, abs(amount))
-			# [assumption added later] loading this could not have worked before because the slot was limited to 0
 			if res in resources:
 				self.get_component(StorageComponent).inventory.alter(res, resources[res])
 
-		upgrade_material_production.add_production_finished_listener(self.level_up)
+		self._upgrade_production.add_production_finished_listener(self.level_up)
 		self.log.debug("%s: Waiting for material to upgrade from %s", self, self.level)
 
-	def _get_upgrade_production(self):
-		upgrade_material_prodline = self.session.db.get_settler_upgrade_material_prodline(self.level+1)
-		if self.get_component(Producer).has_production_line(upgrade_material_prodline):
-			return self.get_component(Producer)._get_production(upgrade_material_prodline)
-		return None
+	def _add_upgrade_production_line(self):
+		"""
+		Add a production line that gets the necessary upgrade material.
+		When the production finishes, it calls upgrade_materials_collected.
+		"""
+		upgrade_material_prodline = SettlerUpgradeData.get_production_line_id(self.level+1)
+		self._upgrade_production = self.get_component(Producer).add_production_by_id( upgrade_material_prodline )
+		self._upgrade_production.add_production_finished_listener(self.level_up)
+
+		# drive the car out of the garage to make space for the building material
+		for res, amount in self._upgrade_production.get_consumed_resources().iteritems():
+			self.get_component(StorageComponent).inventory.add_resource_slot(res, abs(amount))
+
+		self.log.debug("%s: Waiting for material to upgrade from %s", self, self.level)
+
+
 
 	def remove(self):
+		SettlerInhabitantsChanged.broadcast(self, -self.inhabitants)
+
 		UpgradePermissionsChanged.unsubscribe(self._on_change_upgrade_permissions, sender=self.settlement)
 		super(Settler, self).remove()
 
@@ -138,7 +157,7 @@ class Settler(BuildableRect, BuildingResourceHandler, BasicBuilding):
 		return self.session.world.get_settlement(self.position.origin).upgrade_permissions[self.level]
 
 	def _on_change_upgrade_permissions(self, message):
-		production = self._get_upgrade_production()
+		production = self._upgrade_production
 		if production is not None:
 			if production.is_paused() == self.upgrade_allowed:
 				ToggleActive(self.get_component(Producer), production).execute(self.session, True)
@@ -162,6 +181,7 @@ class Settler(BuildableRect, BuildingResourceHandler, BasicBuilding):
 		# taxes, inhabitants
 		self.tax_base = self.session.db.get_settler_tax_income(self.level)
 		self.inhabitants_max = self.session.db.get_settler_inhabitants_max(self.level)
+		self.inhabitants_min = self.session.db.get_settler_inhabitants_min(self.level)
 		if self.inhabitants > self.inhabitants_max: # crop settlers at level down
 			self.inhabitants = self.inhabitants_max
 
@@ -227,7 +247,7 @@ class Settler(BuildableRect, BuildingResourceHandler, BasicBuilding):
 		happiness_decrease -= 6
 		self.get_component(StorageComponent).inventory.alter(RES.HAPPINESS, happiness_decrease)
 		self._changed()
-		self.log.debug("%s: pays %s taxes, -happy: %s new happiness: %s", self, real_taxes, \
+		self.log.debug("%s: pays %s taxes, -happy: %s new happiness: %s", self, real_taxes,
 									 happiness_decrease, self.happiness)
 
 	def inhabitant_check(self):
@@ -251,43 +271,37 @@ class Settler(BuildableRect, BuildingResourceHandler, BasicBuilding):
 
 	def level_check(self):
 		"""Checks whether we should level up or down."""
-		if self.happiness > self.__get_data("happiness_level_up_requirement"):
+		if self.happiness > self.__get_data("happiness_level_up_requirement") and \
+		   self.inhabitants >= self.inhabitants_min:
 			if self.level >= self.level_max:
 				# max level reached already, can't allow an update
 				if self.owner.is_local_player:
 					if not self.__class__._max_increment_reached_notification_displayed:
 						self.__class__._max_increment_reached_notification_displayed = True
-						self.session.ingame_gui.message_widget.add( \
-							self.position.center().x, self.position.center().y, 'MAX_INCR_REACHED')
+						self.session.ingame_gui.message_widget.add(
+							x=self.position.center().x, y=self.position.center().y, string_id='MAX_INCR_REACHED')
 				return
-			# add a production line that gets the necessary upgrade material.
-			# when the production finishes, it calls upgrade_materials_collected.
-			upgrade_material_prodline = self.session.db.get_settler_upgrade_material_prodline(self.level+1)
-			if self.get_component(Producer).has_production_line(upgrade_material_prodline):
+			if self._upgrade_production:
 				return # already waiting for res
-			prodline_data = self.session.db.get_production_line_data(upgrade_material_prodline)
-			owner_inventory = self._get_owner_inventory()
-			upgrade_material_production = SingleUseProduction(self.get_component(StorageComponent).inventory, owner_inventory, \
-			                                                  upgrade_material_prodline, prodline_data)
-			upgrade_material_production.add_production_finished_listener(self.level_up)
-			# drive the car out of the garage to make space for the building material
-			for res, amount in upgrade_material_production.get_consumed_resources().iteritems():
-				self.get_component(StorageComponent).inventory.add_resource_slot(res, abs(amount))
-			self.get_component(Producer).add_production(upgrade_material_production)
-			self.log.debug("%s: Waiting for material to upgrade from %s", self, self.level)
+
+			self._add_upgrade_production_line()
+
 			if not self.upgrade_allowed:
-				ToggleActive(self.get_component(Producer), upgrade_material_production).execute(self.session, True)
-		elif self.happiness < self.__get_data("happiness_level_down_limit"):
+				ToggleActive(self.get_component(Producer), self._upgrade_production).execute(self.session, True)
+
+		elif self.happiness < self.__get_data("happiness_level_down_limit") or \
+		     self.inhabitants < self.inhabitants_min:
 			self.level_down()
 			self._changed()
 
-	def level_up(self, production = None):
+	def level_up(self, production=None):
 		"""Actually level up (usually called when the upgrade material has arrived)"""
+
+		self._upgrade_production = None
 
 		# just level up later that tick, it could disturb other code higher in the call stack
 
 		def _do_level_up():
-			# NOTE: production is unused, but gets passed by the production code
 			self.level += 1
 			self.log.debug("%s: Levelling up to %s", self, self.level)
 			self._update_level_data()
@@ -304,7 +318,7 @@ class Settler(BuildableRect, BuildingResourceHandler, BasicBuilding):
 	def level_down(self):
 		if self.level == 0: # can't level down any more
 			# replace this building with a ruin
-			command = Build(BUILDINGS.SETTLER_RUIN, self.position.origin.x, \
+			command = Build(BUILDINGS.SETTLER_RUIN, self.position.origin.x,
 			                self.position.origin.y, island=self.island, settlement=self.settlement)
 
 			Scheduler().add_new_object(
@@ -314,8 +328,8 @@ class Settler(BuildableRect, BuildingResourceHandler, BasicBuilding):
 			self.log.debug("%s: Destroyed by lack of happiness", self)
 			if self.owner.is_local_player:
 				# check_duplicate: only trigger once for different settlers of a neighborhood
-				self.session.ingame_gui.message_widget.add(self.position.center().x, self.position.center().y, \
-			                                           'SETTLERS_MOVED_OUT', check_duplicate=True)
+				self.session.ingame_gui.message_widget.add(x=self.position.center().x, y=self.position.center().y,
+			                                           string_id='SETTLERS_MOVED_OUT', check_duplicate=True)
 		else:
 			self.level -= 1
 			self._update_level_data()
@@ -338,8 +352,8 @@ class Settler(BuildableRect, BuildingResourceHandler, BasicBuilding):
 					return
 		# no main square found
 		# check_duplicate: only trigger once for different settlers of a neighborhood
-		self.session.ingame_gui.message_widget.add(self.position.origin.x, self.position.origin.y, \
-		                                           'NO_MAIN_SQUARE_IN_RANGE', check_duplicate=True)
+		self.session.ingame_gui.message_widget.add(x=self.position.origin.x, y=self.position.origin.y,
+		                                           string_id='NO_MAIN_SQUARE_IN_RANGE', check_duplicate=True)
 
 	def level_upgrade(self, lvl):
 		"""Settlers only level up by themselves"""
@@ -358,7 +372,7 @@ class Settler(BuildableRect, BuildingResourceHandler, BasicBuilding):
 
 	def __str__(self):
 		try:
-			return "%s(l:%s;ihab:%s;hap:%s)" % (super(Settler, self).__str__(), self.level, \
+			return "%s(l:%s;ihab:%s;hap:%s)" % (super(Settler, self).__str__(), self.level,
 																				self.inhabitants, self.happiness)
 		except AttributeError: # an attribute hasn't been set up
 			return super(Settler, self).__str__()
@@ -370,3 +384,40 @@ class Settler(BuildableRect, BuildingResourceHandler, BasicBuilding):
 		return int(
 		  self.session.db("SELECT value FROM balance_values WHERE name = ?", key)[0][0]
 		  )
+
+
+
+class SettlerUpgradeData(object):
+	"""This is used as glue between the old upgrade system based on sqlite data used in a non-component environment
+	and the current component version with data in yaml"""
+
+	# basically, this is arbitrary as long as it's not the same as any of the regular
+	# production lines of the settler. We reuse data that has arbitrarily been set earlier
+	# to preserve savegame compatibility.
+	production_line_ids = { 1 : 24, 2 : 35, 3: 23451, 4: 34512, 5: 45123 }
+
+	def __init__(self, producer_component, upgrade_material_data):
+		self.upgrade_material_data = upgrade_material_data
+
+	def get_production_lines(self):
+		d = {}
+		for level, prod_line_id in self.__class__.production_line_ids.iteritems():
+			d[prod_line_id] = self.get_production_line_data(level)
+		return d
+
+	def get_production_line_data(self, level):
+		"""Returns production line data for the upgrade to this level"""
+		prod_line_data = {
+		  'time': 1,
+		  'changes_animation' : 0,
+		  'enabled_by_default' : False,
+		  'save_statistics' : False,
+		  'consumes' : self.upgrade_material_data[level]
+		}
+		return prod_line_data
+
+	@classmethod
+	def get_production_line_id(cls, level):
+		"""Returns production line id for the upgrade to this level"""
+		return cls.production_line_ids[level]
+

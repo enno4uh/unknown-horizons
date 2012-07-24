@@ -9,7 +9,7 @@ size_y: 2
 inhabitants: 4
 tooltip_text: _ Extinguishes fires.
 settler_level: TIER.PIONEERS
-buildingcosts: {RES.GOLD: 750, RES.BOARDS: 3, RES.TOOLS: 2, RES.BRICKS: 5}
+buildingcosts: {RES.GOLD: 750, RES.BOARDS: 3, RES.TOOLS: 2, RES.BRICKS: 4}
 show_status_icons: false
 components:
 - SelectableComponent:
@@ -19,11 +19,9 @@ components:
 - HealthComponent: {maxhealth: 1000}
 - ProducerComponent:
    productionlines:
-     56464472:
-       produces: []
+     FIRE:
        consumes:
         - [RES.FIRE, -1]
-       time: 1
 - StorageComponent:
      SlotsStorage:
       slot_sizes: {RES.FIRE: 10}

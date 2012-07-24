@@ -56,7 +56,7 @@ class MainSquareTab(OverviewTab):
 class AccountTab(MainSquareTab):
 	"""Display basic income and expenses of a settlement"""
 	def __init__(self, instance):
-		super(AccountTab, self).__init__(instance=instance, widget='tab_account.xml', \
+		super(AccountTab, self).__init__(instance=instance, widget='tab_account.xml',
 		                                 icon_path='content/gui/icons/tabwidget/warehouse/account_%s.png')
 		self.helptext = _("Account")
 
@@ -153,7 +153,7 @@ class MainSquareSettlerLevelTab(MainSquareTab):
 		if self.__class__.LEVEL < TIER.CURRENT_MAX: #max incr => cannot allow upgrades
 			if self.settlement.upgrade_permissions[self.__class__.LEVEL]:
 				upgrades_button.set_active()
-				upgrades_button.helptext = _('Don\'t allow upgrades')
+				upgrades_button.helptext = _("Don't allow upgrades")
 			else:
 				upgrades_button.set_inactive()
 				upgrades_button.helptext = _('Allow upgrades')
@@ -163,7 +163,7 @@ class MainSquareSettlerLevelTab(MainSquareTab):
 		houses = 0
 		residents = 0
 		for number in xrange(1, self.max_inhabitants + 1):
-			house_count = resident_counts[number] if number in resident_counts else 0
+			house_count = resident_counts.get(number, 0)
 			self.widget.child_finder('resident_count_%d' % number).text = unicode(house_count)
 			houses += house_count
 			residents += house_count * number

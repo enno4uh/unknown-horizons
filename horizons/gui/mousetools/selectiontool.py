@@ -84,30 +84,30 @@ class SelectionTool(NavigationTool):
 			self.session.view.renderer['GenericRenderer'].removeAll(self.__class__._SELECTION_RECTANGLE_NAME)
 			if do_multi:
 				# draw a rectangle
-				a = fife.Point(min(self.select_begin[0], evt.getX()), \
+				a = fife.Point(min(self.select_begin[0], evt.getX()),
 											 min(self.select_begin[1], evt.getY()))
-				b = fife.Point(max(self.select_begin[0], evt.getX()), \
+				b = fife.Point(max(self.select_begin[0], evt.getX()),
 											 min(self.select_begin[1], evt.getY()))
-				c = fife.Point(max(self.select_begin[0], evt.getX()), \
+				c = fife.Point(max(self.select_begin[0], evt.getX()),
 											 max(self.select_begin[1], evt.getY()))
-				d = fife.Point(min(self.select_begin[0], evt.getX()), \
+				d = fife.Point(min(self.select_begin[0], evt.getX()),
 											 max(self.select_begin[1], evt.getY()))
-				self.session.view.renderer['GenericRenderer'].addLine(self.__class__._SELECTION_RECTANGLE_NAME, \
+				self.session.view.renderer['GenericRenderer'].addLine(self.__class__._SELECTION_RECTANGLE_NAME,
 				                                                      fife.RendererNode(a), fife.RendererNode(b), 200, 200, 200)
-				self.session.view.renderer['GenericRenderer'].addLine(self.__class__._SELECTION_RECTANGLE_NAME, \
+				self.session.view.renderer['GenericRenderer'].addLine(self.__class__._SELECTION_RECTANGLE_NAME,
 				                                                      fife.RendererNode(b), fife.RendererNode(c), 200, 200, 200)
-				self.session.view.renderer['GenericRenderer'].addLine(self.__class__._SELECTION_RECTANGLE_NAME, \
+				self.session.view.renderer['GenericRenderer'].addLine(self.__class__._SELECTION_RECTANGLE_NAME,
 				                                                      fife.RendererNode(d), fife.RendererNode(c), 200, 200, 200)
-				self.session.view.renderer['GenericRenderer'].addLine(self.__class__._SELECTION_RECTANGLE_NAME, \
+				self.session.view.renderer['GenericRenderer'].addLine(self.__class__._SELECTION_RECTANGLE_NAME,
 				                                                      fife.RendererNode(a), fife.RendererNode(d), 200, 200, 200)
 
-			instances = self.session.view.cam.getMatchingInstances(\
-				fife.Rect(min(self.select_begin[0], evt.getX()), \
-									min(self.select_begin[1], evt.getY()), \
-									abs(evt.getX() - self.select_begin[0]), \
-									abs(evt.getY() - self.select_begin[1])) if do_multi else fife.ScreenPoint(evt.getX(), evt.getY()),
-			  self.session.view.layers[LAYERS.OBJECTS],
-			  False) # False for accurate
+			instances = self.session.view.cam.getMatchingInstances(
+				fife.Rect(min(self.select_begin[0], evt.getX()),
+						min(self.select_begin[1], evt.getY()),
+						abs(evt.getX() - self.select_begin[0]),
+						abs(evt.getY() - self.select_begin[1])) if do_multi else fife.ScreenPoint(evt.getX(), evt.getY()),
+				self.session.view.layers[LAYERS.OBJECTS],
+				False) # False for accurate
 
 			# get selection components
 			instances = ( self.fife_instance_to_uh_instance(i) for i in instances )
@@ -145,16 +145,16 @@ class SelectionTool(NavigationTool):
 	def apply_select(self):
 		"""
 		Called when selected instances changes. (Shows their menu)
-		If one of the selected instances can attack, switch mousetool to AttackingTool
+		Does not do anything when nothing is selected, i.e. doesn't hide their menu.
+		If one of the selected instances can attack, switch mousetool to AttackingTool.
 		"""
-		if (self.session.world.health_visible_for_all_health_instances):
+		if self.session.world.health_visible_for_all_health_instances:
 			self.session.world.toggle_health_for_all_health_instances()
 		selected = self.session.selected_instances
 		if len(selected) > 1 and all( i.is_unit for i in selected ):
 			self.session.ingame_gui.show_multi_select_tab()
 		elif len(selected) == 1:
-			for i in selected:
-				i.get_component(SelectableComponent).show_menu()
+			iter(selected).next().get_component(SelectableComponent).show_menu()
 
 		#change session cursor to attacking tool if selected instances can attack
 		from attackingtool import AttackingTool
@@ -198,7 +198,7 @@ class SelectionTool(NavigationTool):
 			self.select_begin = (evt.getX(), evt.getY())
 			self.session.ingame_gui.hide_menu()
 		elif evt.getButton() == fife.MouseEvent.RIGHT:
-			target_mapcoord = self.get_exact_world_location_from_event(evt)
+			target_mapcoord = self.get_exact_world_location(evt)
 			for i in self.session.selected_instances:
 				if i.movable:
 					Act(i, target_mapcoord.x, target_mapcoord.y).execute(self.session)

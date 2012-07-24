@@ -93,7 +93,7 @@ class AreaBuilder(WorldObject):
 		moves = [(-1, 0), (0, -1), (0, 1), (1, 0)]
 		queue = deque([item for item in distance.iteritems()])
 
-		while len(queue) > 0:
+		while queue:
 			(coords, dist) = queue.popleft()
 			for dx, dy in moves:
 				coords2 = (coords[0] + dx, coords[1] + dy)
@@ -173,7 +173,7 @@ class AreaBuilder(WorldObject):
 		destination_coords = set(self.iter_possible_road_coords(loading_area, builder.position))
 		beacon = Rect.init_from_borders(loading_area.left - 1, loading_area.top - 1, loading_area.right + 1, loading_area.bottom + 1)
 
-		return RoadPlanner()(self.owner.personality_manager.get('RoadPlanner'), collector_coords, \
+		return RoadPlanner()(self.owner.personality_manager.get('RoadPlanner'), collector_coords,
 			destination_coords, beacon, self.get_path_nodes(), blocked_coords = blocked_coords)
 
 	def build_road(self, path):
@@ -217,7 +217,7 @@ class AreaBuilder(WorldObject):
 		"""
 		return self.get_road_cost(self._get_road_to_builder(builder))
 
-	def make_builder(self, building_id, x, y, needs_collector, orientation = 0):
+	def make_builder(self, building_id, x, y, needs_collector, orientation=0):
 		"""
 		Return a Builder object containing the info.
 

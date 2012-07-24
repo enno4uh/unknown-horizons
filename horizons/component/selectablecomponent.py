@@ -22,12 +22,14 @@
 from fife import fife
 import copy
 import itertools
+import operator
 
 import horizons.main
 
 from horizons.component import Component
 from horizons.util import decorators
-from horizons.constants import GFX, LAYERS
+from horizons.util.shapes.radiusshape import RadiusRect
+from horizons.constants import GFX, LAYERS, RES
 
 class SelectableComponent(Component):
 	"""Stuff you can select.
@@ -51,7 +53,8 @@ class SelectableComponent(Component):
 		# it would be parsed
 		TYPES = { 'building' : SelectableBuildingComponent,
 		          'unit'     : SelectableUnitComponent,
-		          'ship'     : SelectableShipComponent }
+		          'ship'     : SelectableShipComponent,
+		          'fisher' 	 : SelectableFisherComponent, }
 		arguments = copy.copy(arguments)
 		t = arguments.pop('type')
 		return TYPES[ t ]( **arguments )
@@ -104,6 +107,8 @@ class SelectableComponent(Component):
 	def remove(self):
 		if self.instance in self.session.selected_instances:
 			self.session.selected_instances.remove(self.instance)
+		for group in self.session.selection_groups:
+			group.discard(self)
 		if self._selected:
 			self.deselect()
 		super(SelectableComponent, self).remove()
@@ -138,7 +143,7 @@ class SelectableBuildingComponent(SelectableComponent):
 	def initialize(self):
 		# check for related buildings (defined in db, not yaml)
 		related_buildings = self.session.db.get_related_building_ids_for_menu(self.instance.id)
-		if len(related_buildings) > 0:
+		if related_buildings:
 			from horizons.gui.tabs import BuildRelatedTab
 			self.tabs += (BuildRelatedTab,)
 
@@ -188,7 +193,7 @@ class SelectableBuildingComponent(SelectableComponent):
 		"""
 		import cProfile as profile
 		import tempfile
-		outfilename = tempfile.mkstemp(text = True)[1]
+		outfilename = tempfile.mkstemp(text=True)[1]
 		print 'profile to ', outfilename
 		c = "cls._do_select(renderer, position, session.world, settlement)"
 		profile.runctx(c, globals(), locals(), outfilename)
@@ -224,18 +229,17 @@ class SelectableBuildingComponent(SelectableComponent):
 
 		# group buildings per settlement and treat them separately
 		# they cannot share tiles, and we can then just access the settlements ground map
-		get_settlement = lambda b : b.settlement
-		buildings_sorted = sorted(buildings, key=get_settlement)
-		for settlement, buildings in itertools.groupby( buildings_sorted, get_settlement ):
+		buildings_sorted = sorted(buildings, key=operator.attrgetter('settlement'))
+		for settlement, buildings in itertools.groupby( buildings_sorted, operator.attrgetter('settlement') ):
 			# resolve operator
 			buildings = list(buildings)
 
 			for building in buildings:
 				building.get_component(SelectableComponent).set_selection_outline()
 
-			coords = set( coord for \
-				            building in buildings for \
-				            coord in building.position.get_radius_coordinates(building.radius, include_self=True) )
+			coords = set( coord for
+			              building in buildings for
+			              coord in building.position.get_radius_coordinates(building.radius, include_self=True) )
 
 			for coord in coords:
 				tile = settlement.ground_map.get(coord)
@@ -265,16 +269,7 @@ class SelectableBuildingComponent(SelectableComponent):
 		else:
 			# we have to color water too
 			# since water tiles are huge, create fake tiles and color them
-
-			if not hasattr(cls, "_fake_tile_obj"):
-				# create object to create instances from
-				cls._fake_tile_obj = horizons.main.fife.engine.getModel().createObject('fake_tile_obj', 'ground')
-				fife.ObjectVisual.create(cls._fake_tile_obj)
-
-				img_path = 'content/gfx/fake_water.png'
-				img = horizons.main.fife.imagemanager.load(img_path)
-				for rotation in [45, 135, 225, 315]:
-					cls._fake_tile_obj.get2dGfxVisual().addStaticImage(rotation, img.getHandle())
+			cls._init_fake_tile()
 
 			layer = world.session.view.layers[LAYERS.FIELDS]
 			# color island or fake tile
@@ -283,12 +278,31 @@ class SelectableBuildingComponent(SelectableComponent):
 				if tile is not None:
 					cls._add_selected_tile(tile, renderer)
 				else: # need extra tile
-					inst = layer.createInstance(cls._fake_tile_obj,
-					                            fife.ModelCoordinate(tup[0], tup[1], 0), "")
-					fife.InstanceVisual.create(inst)
+					cls._add_fake_tile(tup[0], tup[1], layer, renderer)
 
-					cls._selected_fake_tiles.l.append(inst)
-					renderer.addColored(inst, *cls.selection_color)
+	@classmethod
+	def _init_fake_tile(cls):
+		"""Sets the _fake_tile_obj class variable with a ready to use fife object. To create a new fake tile, use _add_fake_tile()"""
+		# use fixed SelectableBuildingComponent here, to make sure subclasses also read the same variable
+		if not hasattr(SelectableBuildingComponent, "_fake_tile_obj"):
+			# create object to create instances from
+			SelectableBuildingComponent._fake_tile_obj = horizons.main.fife.engine.getModel().createObject('fake_tile_obj', 'ground')
+			fife.ObjectVisual.create(SelectableBuildingComponent._fake_tile_obj)
+
+			img_path = 'content/gfx/fake_water.png'
+			img = horizons.main.fife.imagemanager.load(img_path)
+			for rotation in [45, 135, 225, 315]:
+				SelectableBuildingComponent._fake_tile_obj.get2dGfxVisual().addStaticImage(rotation, img.getHandle())
+
+	@classmethod
+	def _add_fake_tile(cls, x, y, layer, renderer):
+		"""Adds a fake tile to the position. Requires 'cls._fake_tile_obj' to be set."""
+		inst = layer.createInstance(SelectableBuildingComponent._fake_tile_obj,
+	                                fife.ModelCoordinate(x, y, 0), "")
+		fife.InstanceVisual.create(inst)
+		cls._selected_fake_tiles.l.append(inst)
+		renderer.addColored(inst, *cls.selection_color)
+
 
 	@classmethod
 	def _add_selected_tile(cls, tile, renderer, remember=True):
@@ -341,8 +355,28 @@ class SelectableShipComponent(SelectableUnitComponent):
 			super(SelectableShipComponent, self).deselect()
 			self.instance._update_buoy(remove_only=True)
 
+class SelectableFisherComponent(SelectableBuildingComponent):
+	"""Class used to highlight the radius of a fisher. Highlights only the fishing
+	grounds."""
 
+	@classmethod
+	def _do_select(cls, renderer, position, world, settlement, radius,
+	               range_applies_only_on_island):
+		# No super, we don't want to color the ground
+		cls._init_fake_tile()
+		layer = world.session.view.layers[LAYERS.FIELDS]
+		for fish_deposit in world.get_providers_in_range(RadiusRect(position, radius), res=RES.FISH):
+			#renderer.addColored(fish_deposit._instance, *cls.selection_color)
+			#cls._selected_tiles.l.append(fish_deposit)
+			for pos in fish_deposit.position:
+				cls._add_fake_tile(pos.x, pos.y, layer, renderer)
 
+	"""@classmethod
+	def get_instance(cls, arguments):
+		arguments = copy.copy(arguments)
+		return SelectableFisherComponent( **arguments )"""
+
+decorators.bind_all(SelectableFisherComponent)
 decorators.bind_all(SelectableBuildingComponent)
 decorators.bind_all(SelectableShipComponent)
 decorators.bind_all(SelectableUnitComponent)

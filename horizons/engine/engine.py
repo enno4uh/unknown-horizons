@@ -26,7 +26,6 @@ import locale
 
 from fife import fife
 from fife.extensions.basicapplication import ApplicationBase
-from fife.extensions import fifelog
 from fife.extensions import pychan
 from fife.extensions.serializers.simplexml import SimpleXMLSerializer
 
@@ -54,17 +53,16 @@ class Fife(ApplicationBase):
 		self.engine = fife.Engine()
 		self.engine_settings = self.engine.getSettings()
 
-		logToPrompt, logToFile, debugPychan = True, True, False
-		self._log = fifelog.LogManager(self.engine, 1 if logToPrompt else 0, 1 if logToFile else 0)
+		super(Fife, self).initLogging()
 
 		self.loadSettings()
 
 		self.pychan = pychan
 
-		self._doQuit = False
-		self._doBreak = False
-		self._doReturn = None
-		self._gotInited = False
+		self.quit_requested = False
+		self.break_requested = False
+		self.return_values = None
+		self._got_inited = False
 
 
 	# existing settings not part of this gui or the fife defaults
@@ -73,9 +71,7 @@ class Fife(ApplicationBase):
 
 	def _setup_settings(self, check_file_version=True):
 		_user_config_file = os.path.join( os.getcwd(), PATHS.USER_CONFIG_FILE )
-		if not os.path.exists(_user_config_file):
-			check_file_version = False
-		if check_file_version:
+		if check_file_version and os.path.exists(_user_config_file):
 			# check if user settings file is the current one
 
 			# NOTE: SimpleXMLSerializer can't handle relative paths, it fails silently
@@ -143,13 +139,6 @@ class Fife(ApplicationBase):
 	def init(self):
 		"""Second initialisation stage of engine
 		"""
-		logToPrompt, logToFile, debugPychan = True, True, False
-		if self._gotInited:
-			return
-		#start modules
-		self.log = fifelog.LogManager(self.engine, 1 if logToPrompt else 0, 1 if logToFile else 0)
-		#self.log.setVisibleModules('all')
-
 		self.engine.init()
 
 		#init stuff
@@ -166,16 +155,19 @@ class Fife(ApplicationBase):
 
 		#Set game cursor
 		self.cursor = self.engine.getCursor()
-		self.cursor_images = {
-			'default': self.imagemanager.load('content/gui/images/cursors/cursor.png'),
-			'tearing': self.imagemanager.load('content/gui/images/cursors/cursor_tear.png'),
-			'attacking': self.imagemanager.load('content/gui/images/cursors/cursor_attack.png'),
-			'pipette': self.imagemanager.load('content/gui/images/cursors/cursor_pipette.png')
+		cursor_images = {
+			'default':   'content/gui/images/cursors/cursor.png',
+			'tearing':   'content/gui/images/cursors/cursor_tear.png',
+			'attacking': 'content/gui/images/cursors/cursor_attack.png',
+			'pipette':   'content/gui/images/cursors/cursor_pipette.png',
+			'rename':    'content/gui/images/cursors/cursor_rename.png',
 		}
+		self.cursor_images = dict( (k, self.imagemanager.load(v)) for k, v in  cursor_images.iteritems() )
 		self.cursor.set( self.cursor_images['default'] )
 
 		#init pychan
-		self.pychan.init(self.engine, debugPychan)
+		debug_pychan = self.get_fife_setting('PychanDebug') # default is False
+		self.pychan.init(self.engine, debug_pychan) # pychan debug mode may have performance impacts
 		self.pychan.setupModalExecution(self.loop, self.breakLoop)
 		self.console = self.pychan.manager.hook.guimanager.getConsole()
 
@@ -248,7 +240,7 @@ class Fife(ApplicationBase):
 	def loop(self):
 		"""
 		"""
-		while not self._doQuit:
+		while not self.quit_requested:
 			try:
 				self.engine.pump()
 			except fife.Exception as e:
@@ -256,24 +248,23 @@ class Fife(ApplicationBase):
 				break
 			for f in self.pump:
 				f()
-			if self._doBreak:
-				self._doBreak = False
-				return self._doReturn
+			if self.break_requested:
+				self.break_requested = False
+				return self.return_values
 
 	def __kill_engine(self):
 		"""Called when the engine is quit"""
 		self.cursor.set(fife.CURSOR_NATIVE) #hack to get system cursor back
 		self.engine.destroy()
 
-	def breakLoop(self, returnValue = None):
+	def breakLoop(self, returnValue=None):
 		"""
 		@param returnValue:
 		"""
-		self._doReturn = returnValue
-		self._doBreak = True
+		self.return_values = returnValue
+		self.break_requested = True
 
 	def quit(self):
 		""" Quits the engine.
 		"""
-		self._doQuit = True
-
+		self.quit_requested = True

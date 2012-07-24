@@ -65,6 +65,7 @@ class BuildingClass(IngameType):
 		self.running_costs_inactive = yaml_data['cost_inactive']
 		self.has_running_costs = (self.running_costs != 0)
 		self.show_status_icons = yaml_data.get('show_status_icons', True)
+		self.translucent = yaml_data.get('translucent', False)
 		# for mines: on which deposit is it buildable
 		buildable_on_deposit_type = db("SELECT deposit FROM mine WHERE mine = ?", self.id)
 		if buildable_on_deposit_type:
@@ -85,6 +86,9 @@ class BuildingClass(IngameType):
 			cls._real_object = horizons.main.fife.engine.getModel().getObject(str(cls.id), 'building')
 			return
 		all_action_sets = ActionSetLoader.get_sets()
+
+		# NOTE: the code below is basically duplicated in UHObjectLoader._loadBuilding in the editor
+
 		# cls.action_sets looks like this: {tier1: {set1: None, set2: preview2, ..}, ..}
 		for action_set_list in cls.action_sets.itervalues():
 			for action_set_id in action_set_list.iterkeys(): # set1, set2, ...

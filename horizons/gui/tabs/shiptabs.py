@@ -33,7 +33,7 @@ from horizons.component.selectablecomponent import SelectableComponent
 
 
 class ShipOverviewTab(OverviewTab):
-	def __init__(self, instance, widget = 'overview_trade_ship.xml', \
+	def __init__(self, instance, widget='overview_trade_ship.xml',
 			icon_path='content/gui/icons/tabwidget/ship/ship_inv_%s.png'):
 		super(ShipOverviewTab, self).__init__(instance, widget, icon_path)
 		self.widget.child_finder('inventory').init(self.instance.session.db, self.instance.get_component(StorageComponent).inventory)
@@ -53,9 +53,9 @@ class ShipOverviewTab(OverviewTab):
 				helptext = _("You already have a settlement on this island.")
 
 		if island_without_player_settlement_found:
-			events['found_settlement'] = Callback(self.instance.session.ingame_gui._build, \
-			                                     BUILDINGS.WAREHOUSE, \
-			                                     weakref.ref(self.instance) )
+			events['found_settlement'] = Callback(self.instance.session.ingame_gui._build,
+			                                      BUILDINGS.WAREHOUSE,
+			                                      weakref.ref(self.instance) )
 			self.widget.child_finder('found_settlement_bg').set_active()
 			self.widget.child_finder('found_settlement').set_active()
 			self.widget.child_finder('found_settlement').helptext = _("Build settlement")
@@ -77,8 +77,7 @@ class ShipOverviewTab(OverviewTab):
 		events['found_settlement/mouseExited'] = cb
 
 	def _refresh_trade_button(self, events):
-		warehouses = self.instance.session.world.get_warehouses(self.instance.position, \
-			self.instance.radius, self.instance.owner, True)
+		warehouses = self.instance.get_tradeable_warehouses()
 
 		if warehouses:
 			if warehouses[0].owner is self.instance.owner:
@@ -93,7 +92,7 @@ class ShipOverviewTab(OverviewTab):
 			events['trade'] = None
 			self.widget.findChild(name='trade_bg').set_inactive()
 			self.widget.findChild(name='trade').set_inactive()
-			self.widget.findChild(name='trade').helptext = _('Too far from the nearest own or allied warehouse')
+			self.widget.findChild(name='trade').helptext = _('Too far from the nearest tradeable warehouse')
 
 	def _refresh_combat(self): # no combat
 		def click_on_cannons(button):
@@ -122,7 +121,7 @@ class ShipOverviewTab(OverviewTab):
 
 class FightingShipOverviewTab(ShipOverviewTab):
 	has_stance = True
-	def __init__(self, instance, widget = 'overview_war_ship.xml', \
+	def __init__(self, instance, widget='overview_war_ship.xml',
 			icon_path='content/gui/icons/tabwidget/ship/ship_inv_%s.png'):
 		super(FightingShipOverviewTab, self).__init__(instance, widget, icon_path)
 

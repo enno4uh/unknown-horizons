@@ -52,8 +52,8 @@ from horizons.world import worldutils
 class World(BuildingOwner, WorldObject):
 	"""The World class represents an Unknown Horizons map with all its units, grounds, buildings, etc.
 
-	It inherits from BuildingOwner, amongst other things, so it has building management capabilities.
-	There is always one big reference per building. It is stored either in the world, the island
+	It inherits from BuildingOwner, among other things, so it has building management capabilities.
+	There is always one big reference per building, which is stored in either the world, the island,
 	or the settlement.
 
 	The main components of the world are:
@@ -91,7 +91,7 @@ class World(BuildingOwner, WorldObject):
 		for island in self.islands:
 			island.end()
 		for player in self.players:
-			player.end() # end players after game entites, since they usually depend on players
+			player.end() # end players after game entities, since they usually depend on players
 
 		self.session = None
 		self.properties = None
@@ -120,7 +120,7 @@ class World(BuildingOwner, WorldObject):
 		All essential and non-essential parts of the world are set up here, you don't need to
 		know everything that happens.
 		"""
-		#load properties
+		# load properties
 		self.properties = {}
 		for (name, value) in savegame_db("SELECT name, value FROM map_properties"):
 			self.properties[name] = json.loads(value)
@@ -186,8 +186,9 @@ class World(BuildingOwner, WorldObject):
 			Entities.units[typeid].load(self.session, savegame_db, worldid)
 
 		if self.session.is_game_loaded():
-			# let trader and pirate command it's ships. we have to do this here cause ships have to be
-			# initialised for this, and they have to exist before ships are loaded.
+			# let trader and pirate command their ships. we have to do this here
+			# because ships have to be initialised for this, and they have
+			# to exist before ships are loaded.
 			if self.trader:
 				self.trader.load_ship_states(savegame_db)
 			if self.pirate:
@@ -210,7 +211,7 @@ class World(BuildingOwner, WorldObject):
 		self.inited = True
 		"""TUTORIAL:
 		To dig deeper, you should now continue to horizons/world/island.py,
-		to check out how buildings and settlements are added to the map"""
+		to check out how buildings and settlements are added to the map."""
 
 
 
@@ -237,7 +238,7 @@ class World(BuildingOwner, WorldObject):
 			data = {'player1' : player1, 'player2' : player2}
 
 			self.session.ingame_gui.message_widget.add(
-			  None, None, 'DIPLOMACY_STATUS_'+old_state.upper()+"_"+new_state.upper(), data)
+			  x=None, y=None, string_id='DIPLOMACY_STATUS_'+old_state.upper()+"_"+new_state.upper(), message_dict=data)
 
 		self.diplomacy.add_diplomacy_status_changed_listener(notify_change)
 
@@ -309,7 +310,7 @@ class World(BuildingOwner, WorldObject):
 			player = None
 			# check if player is an ai
 			ai_data = self.session.db("SELECT class_package, class_name FROM ai WHERE client_id = ?", client_id)
-			if len(ai_data) > 0:
+			if ai_data:
 				class_package, class_name = ai_data[0]
 				# import ai class and call load on it
 				module = __import__('horizons.ai.'+class_package, fromlist=[str(class_name)])
@@ -321,7 +322,7 @@ class World(BuildingOwner, WorldObject):
 
 			if client_id == horizons.main.fife.get_uh_setting("ClientID"):
 				self.player = player
-			elif client_id is not None and len(ai_data) == 0:
+			elif client_id is not None and not ai_data:
 				# possible human player candidate with different client id
 				human_players.append(player)
 		self.owner_highlight_active = False
@@ -348,7 +349,8 @@ class World(BuildingOwner, WorldObject):
 			or multiple candidates.')
 
 	def _init_water_bodies(self):
-		""" This function runs the flood fill algorithm on the water to make it easy to recognise different water bodies """
+		"""This function runs the flood fill algorithm on the water to make it easy
+		to recognise different water bodies."""
 		moves = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
 
 		n = 0
@@ -377,17 +379,17 @@ class World(BuildingOwner, WorldObject):
 	def init_new_world(self, trader_enabled, pirate_enabled, natural_resource_multiplier):
 		"""
 		This should be called if a new map is loaded (not a savegame, a fresh
-		map). In other words when it is loaded for the first time.
+		map). In other words, when it is loaded for the first time.
 
 		NOTE: commands for creating the world objects are executed directly,
-		      bypassing the manager
+		      bypassing the manager.
 		      This is necessary because else the commands would be transmitted
 		      over the wire in network games.
 
 		@return: the coordinates of the players first ship
 		"""
 
-		# workaround: the creation of all the objects causes a lot of logging output, we don't need
+		# workaround: the creation of all the objects causes a lot of logging output we don't need.
 		#             therefore, reset the levels for now
 		loggers_to_silence = { 'world.production' : None }
 		for logger_name in loggers_to_silence:
@@ -430,7 +432,7 @@ class World(BuildingOwner, WorldObject):
 			self.pirate = Pirate(self.session, 99998, "Captain Blackbeard", Color())
 
 		# Fire a message for new world creation
-		self.session.ingame_gui.message_widget.add(None, None, 'NEW_WORLD')
+		self.session.ingame_gui.message_widget.add(x=None, y=None, string_id='NEW_WORLD')
 		assert ret_coords is not None, "Return coords are None. No players loaded?"
 		return ret_coords
 
@@ -445,25 +447,25 @@ class World(BuildingOwner, WorldObject):
 					break
 
 	def get_random_possible_ground_unit_position(self):
-		"""Returns a position in water, that is not at the border of the world.
+		"""Returns a position in water that is not at the border of the world.
 		@return: Point"""
 		return worldutils.get_random_possible_ground_unit_position(self)
 
 	def get_random_possible_ship_position(self):
-		"""Returns a position in water, that is not at the border of the world
+		"""Returns a position in water that is not at the border of the world.
 		@return: Point"""
 		return worldutils.get_random_possible_ship_position(self)
 
 	def get_random_possible_coastal_ship_position(self):
-		"""Returns a position in water, that is not at the border of the world
-		but on the coast of an island
+		"""Returns a position in water that is not at the border of the world
+		but on the coast of an island.
 		@return: Point"""
 		return worldutils.get_random_possible_coastal_ship_position(self)
 
 	#----------------------------------------------------------------------
 	def get_tiles_in_radius(self, position, radius, shuffle=False):
-		"""Returns a all tiles in the radius around the point.
-		This is a generator, make sure you use it appropriately.
+		"""Returns all tiles in the radius around the point.
+		This is a generator; make sure you use it appropriately.
 		@param position: Point instance
 		@return List of tiles in radius.
 		"""
@@ -472,7 +474,7 @@ class World(BuildingOwner, WorldObject):
 
 	def get_points_in_radius(self, position, radius, shuffle=False):
 		"""Returns all points in the radius around the point.
-		This is a generator, make sure you use it appropriately.
+		This is a generator; make sure you use it appropriately.
 		@param position: Point instance
 		@return List of points in radius.
 		"""
@@ -486,16 +488,16 @@ class World(BuildingOwner, WorldObject):
 				# don't yield if point is not in map, those points don't exist
 				yield point
 
-	def setup_player(self, id, name, color, local, is_ai, difficulty_level):
+	def setup_player(self, id, name, color, clientid, local, is_ai, difficulty_level):
 		"""Sets up a new Player instance and adds her to the active world.
 		Only used for new games. Loading old players is done in _init().
 		@param local: bool, whether the player is the one sitting on front of this machine."""
 		inv = self.session.db.get_player_start_res()
 		player = None
 		if is_ai: # a human controlled AI player
-			player = AIPlayer(self.session, id, name, color, difficulty_level)
+			player = AIPlayer(self.session, id, name, color, clientid, difficulty_level)
 		else:
-			player = HumanPlayer(self.session, id, name, color, difficulty_level)
+			player = HumanPlayer(self.session, id, name, color, clientid, difficulty_level)
 		player.initialize(inv)  # Componentholder init
 		if local:
 			self.player = player
@@ -517,7 +519,7 @@ class World(BuildingOwner, WorldObject):
 		return settlements
 
 	def get_island(self, point):
-		"""Returns the island for that coordinate, if none is found, returns None.
+		"""Returns the island for that coordinate. If none is found, returns None.
 		@param point: instance of Point"""
 		# NOTE: keep code synchronised with duplicated code below
 		return self.island_map.get(point.to_tuple())
@@ -536,13 +538,13 @@ class World(BuildingOwner, WorldObject):
 				break
 		return islands
 
-	def get_warehouses(self, position=None, radius=None, owner=None, include_allied=False):
-		"""Returns all warehouses on the map. Optionally only those in range
+	def get_warehouses(self, position=None, radius=None, owner=None, include_tradeable=False):
+		"""Returns all warehouses on the map, optionally only those in range
 		around the specified position.
 		@param position: Point or Rect instance.
 		@param radius: int radius to use.
 		@param owner: Player instance, list only warehouses belonging to this player.
-		@param include_allied also list the warehouses belonging to allies
+		@param include_tradeable also list the warehouses the owner can trade with
 		@return: List of warehouses.
 		"""
 		warehouses = []
@@ -555,15 +557,15 @@ class World(BuildingOwner, WorldObject):
 		for island in islands:
 			for settlement in island.settlements:
 				warehouse = settlement.warehouse
-				if (radius is None or position is None or \
+				if (radius is None or position is None or
 				    warehouse.position.distance(position) <= radius) and \
 				   (owner is None or warehouse.owner == owner or
-				    (include_allied and self.diplomacy.are_allies(warehouse.owner, owner))):
+				    (include_tradeable and self.diplomacy.can_trade(warehouse.owner, owner))):
 					warehouses.append(warehouse)
 		return warehouses
 
 	def get_ships(self, position=None, radius=None):
-		"""Returns all ships on the map. Optionally only those in range
+		"""Returns all ships on the map, optionally only those in range
 		around the specified position.
 		@param position: Point or Rect instance.
 		@param radius: int radius to use.

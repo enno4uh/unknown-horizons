@@ -27,10 +27,10 @@ from horizons.world.units.movingobject import MovingObject
 from horizons.util import Point, WorldObject, WeakMethod, decorators, Callback
 from horizons.constants import LAYERS
 from horizons.component.healthcomponent import HealthComponent
-from horizons.component.storagecomponent import StorageComponent
 from horizons.extscheduler import ExtScheduler
+from horizons.world.resourcehandler import ResourceTransferHandler
 
-class Unit(MovingObject):
+class Unit(MovingObject, ResourceTransferHandler):
 	log = logging.getLogger("world.units")
 	is_unit = True
 	is_ship = False
@@ -52,7 +52,7 @@ class Unit(MovingObject):
 		self.InstanceActionListener.onInstanceActionFrame = lambda *args : None
 		self.InstanceActionListener.thisown = 0 # fife will claim ownership of this
 
-		self._instance = self.session.view.layers[LAYERS.OBJECTS].createInstance( \
+		self._instance = self.session.view.layers[LAYERS.OBJECTS].createInstance(
 			self.__class__._object, fife.ModelCoordinate(int(x), int(y), 0), str(self.worldid))
 		fife.InstanceVisual.create(self._instance)
 		location = fife.Location(self._instance.getLocation().getLayer())
@@ -82,8 +82,8 @@ class Unit(MovingObject):
 		@param action: string representing the action that is finished.
 		"""
 		location = fife.Location(self._instance.getLocation().getLayer())
-		location.setExactLayerCoordinates(fife.ExactModelCoordinate( \
-			self.position.x + self.position.x - self.last_position.x, \
+		location.setExactLayerCoordinates(fife.ExactModelCoordinate(
+			self.position.x + self.position.x - self.last_position.x,
 			self.position.y + self.position.y - self.last_position.y, 0))
 		if action.getId() != ('move_' + self._action_set_id):
 			self.act(self._action, self._instance.getFacingLocation(), True)
@@ -134,19 +134,19 @@ class Unit(MovingObject):
 		mid_node_up = fife.RendererNode(self._instance, relative_up)
 		mid_node_down = fife.RendererNode(self._instance, relative_dn)
 
-		if health != 0: # draw healthy part of health bar
+		if health > 0: # draw healthy part of health bar
 			renderer.addQuad(render_name,
-			                fife.RendererNode(self._instance, fife.Point(-width/2, y_pos - height)), \
-			                fife.RendererNode(self._instance, fife.Point(-width/2, y_pos)), \
-			                mid_node_down, \
-			                mid_node_up, \
+			                fife.RendererNode(self._instance, fife.Point(-width/2, y_pos - height)),
+			                fife.RendererNode(self._instance, fife.Point(-width/2, y_pos)),
+			                mid_node_down,
+			                mid_node_up,
 			                0, 255, 0)
-		if health != max_health: # draw damaged part
+		if health < max_health: # draw damaged part
 			renderer.addQuad(render_name,
-			                 mid_node_up, \
-			                 mid_node_down, \
-			                 fife.RendererNode(self._instance, fife.Point(width/2, y_pos)), \
-			                 fife.RendererNode(self._instance, fife.Point(width/2, y_pos - height)), \
+			                 mid_node_up,
+			                 mid_node_down,
+			                 fife.RendererNode(self._instance, fife.Point(width/2, y_pos)),
+			                 fife.RendererNode(self._instance, fife.Point(width/2, y_pos - height)),
 			                 255, 0, 0)
 
 	def hide(self):
@@ -163,39 +163,19 @@ class Unit(MovingObject):
 
 		owner_id = 0 if self.owner is None else self.owner.worldid
 		db("INSERT INTO unit (rowid, type, x, y, owner) VALUES(?, ?, ?, ?, ?)",
-			self.worldid, self.__class__.id, self.position.x, self.position.y, \
-					owner_id)
+			self.worldid, self.__class__.id, self.position.x, self.position.y, owner_id)
 
 	def load(self, db, worldid):
 		super(Unit, self).load(db, worldid)
 
 		x, y, owner_id = db("SELECT x, y, owner FROM unit WHERE rowid = ?", worldid)[0]
-		if (owner_id == 0):
+		if owner_id == 0:
 			owner = None
 		else:
 			owner = WorldObject.get_object_by_id(owner_id)
 		self.__init(x, y, owner)
 
 		return self
-
-	def transfer_to_storageholder(self, amount, res_id, transfer_to):
-		"""Transfers amount of res_id to transfer_to.
-		@param transfer_to: worldid or object reference
-		@return: amount that was actually transfered (NOTE: this is different from the
-						 return value of inventory.alter, since here are 2 storages involved)
-		"""
-		try:
-			transfer_to = WorldObject.get_object_by_id( int(transfer_to) )
-		except TypeError: # transfer_to not an int, assume already obj
-			pass
-		# take res from self
-		ret = self.get_component(StorageComponent).inventory.alter(res_id, -amount)
-		# check if we were able to get the planed amount
-		ret = amount if amount < abs(ret) else abs(ret)
-		# put res to transfer_to
-		ret = transfer_to.get_component(StorageComponent).inventory.alter(res_id, amount - ret)
-		self.get_component(StorageComponent).inventory.alter(res_id, ret) # return resources that did not fit
-		return amount - ret
 
 	def get_random_location(self, in_range):
 		"""Returns a random location in walking_range, that we can find a path to

@@ -35,11 +35,18 @@ from horizons.component.storagecomponent import StorageComponent
 class ProductionBuilding(BuildingResourceHandler, BuildableSingle, BasicBuilding):
 	pass
 
-class Farm(ProductionBuilding):
-
-	def _get_providers(self):
+class PastryShop(ProductionBuilding):
+	def get_providers(self):
 		reach = RadiusRect(self.position, self.radius)
-		providers = self.island.get_providers_in_range(reach, reslist=self.get_needed_resources())
+		resources = self.get_consumed_resources(include_inactive=True)
+		providers = self.island.get_providers_in_range(reach, reslist=resources)
+		return [provider for provider in providers]
+
+class Farm(ProductionBuilding):
+	def get_providers(self):
+		reach = RadiusRect(self.position, self.radius)
+		resources = self.get_consumed_resources(include_inactive=True)
+		providers = self.island.get_providers_in_range(reach, reslist=resources)
 		return [provider for provider in providers if isinstance(provider, Field)]
 
 
@@ -48,7 +55,6 @@ class CoastalProducer(BuildingResourceHandler, BuildableSingleOnOcean, BasicBuil
 	pass
 
 class Fisher(BuildingResourceHandler, BuildableSingleOnCoast, BasicBuilding):
-
 	"""
 	Old selection workaround (only color fish) removed in b69c72aeef0174c42dec4039eed7b81f96f6dcaa.
 	"""
@@ -116,7 +122,7 @@ class Mine(BuildingResourceHandler, BuildableSingleOnDeposit, BasicBuilding):
 	def remove(self):
 		# build the deposit back here after remove() is finished
 		deposit_build_data = { 'inventory' : self.get_component(StorageComponent).inventory.get_dump() }
-		build_cmd = Build(self.__deposit_class, self.position.origin.x, self.position.origin.y, \
+		build_cmd = Build(self.__deposit_class, self.position.origin.x, self.position.origin.y,
 		                  self.island, ownerless=True, data = deposit_build_data)
 		Scheduler().add_new_object(build_cmd, build_cmd, run_in=0)
 
@@ -124,7 +130,7 @@ class Mine(BuildingResourceHandler, BuildableSingleOnDeposit, BasicBuilding):
 
 	def save(self, db):
 		super(Mine, self).save(db)
-		db("INSERT INTO mine(rowid, deposit_class) VALUES(?, ?)", \
+		db("INSERT INTO mine(rowid, deposit_class) VALUES(?, ?)",
 		   self.worldid, self.__deposit_class)
 
 	def load(self, db, worldid):

@@ -96,8 +96,8 @@ class MainListener(fife.IKeyListener, fife.ConsoleExecuter, LivingObject):
 			horizons.main.fife.engine.getRenderBackend().captureScreen(screenshotfilename)
 			if self.gui.session is not None:
 				# ingame message if there is a session
-				self.gui.session.ingame_gui.message_widget.add(None, None, 'SCREENSHOT', \
-																													{'file': screenshotfilename})
+				self.gui.session.ingame_gui.message_widget.add(x=None, y=None, string_id='SCREENSHOT',
+																													message_dict={'file': screenshotfilename})
 		elif action == _Actions.QUICKLOAD:
 			from horizons.main import _load_last_quicksave
 			_load_last_quicksave(self.gui.session)
@@ -131,7 +131,7 @@ class MainListener(fife.IKeyListener, fife.ConsoleExecuter, LivingObject):
 		self.commandbuffer = ''
 		oldout = sys.stdout
 		class console_file(object):
-			def __init__(self, copy = None):
+			def __init__(self, copy=None):
 				self.buffer = ''
 				self.copy = copy
 			def write(self, string):
@@ -141,7 +141,7 @@ class MainListener(fife.IKeyListener, fife.ConsoleExecuter, LivingObject):
 					horizons.main.fife.console.println(p)
 				self.copy.write(string)
 			def __del__(self):
-				if len(self.buffer) > 0:
+				if self.buffer:
 					self.write('\n')
 		sys.stdout = console_file(oldout)
 		try:

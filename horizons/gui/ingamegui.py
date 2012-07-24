@@ -44,9 +44,11 @@ from horizons.command.uioptions import RenameObject
 from horizons.command.misc import Chat
 from horizons.command.game import SpeedDownCommand, SpeedUpCommand
 from horizons.gui.tabs.tabinterface import TabInterface
+from horizons.gui.tabs import MainSquareOverviewTab
 from horizons.component.namedcomponent import SettlementNameComponent, NamedComponent
+from horizons.component.ambientsoundcomponent import AmbientSoundComponent
 from horizons.component.selectablecomponent import SelectableComponent
-from horizons.messaging import SettlerUpdate, SettlerInhabitantsChanged, ResourceBarResize, HoverSettlementChanged
+from horizons.messaging import SettlerUpdate, SettlerInhabitantsChanged, ResourceBarResize, HoverSettlementChanged, TabWidgetChanged
 from horizons.util.lastactiveplayersettlementmanager import LastActivePlayerSettlementManager
 
 class IngameGui(LivingObject):
@@ -143,12 +145,6 @@ class IngameGui(LivingObject):
 		self.resource_overview = ResourceOverviewBar(self.session)
 		ResourceBarResize.subscribe(self._on_resourcebar_resize)
 
-		# map buildings to build functions calls with their building id.
-		# This is necessary because BuildTabs have no session.
-		self.callbacks_build = dict()
-		for building_id in Entities.buildings.iterkeys():
-			self.callbacks_build[building_id] = Callback(self._build, building_id)
-
 		# Register for messages
 		SettlerUpdate.subscribe(self._on_settler_level_change)
 		SettlerInhabitantsChanged.subscribe(self._on_settler_inhabitant_change)
@@ -237,16 +233,19 @@ class IngameGui(LivingObject):
 
 	def update_settlement(self):
 		cityinfo = self.widgets['city_info']
+		city_name_label = cityinfo.findChild(name="city_name")
 		if self.settlement.owner.is_local_player: # allow name changes
 			cb = Callback(self.show_change_name_dialog, self.settlement)
 			helptext = _("Click to change the name of your settlement")
+			city_name_label.enable_cursor_change_on_hover()
 		else: # no name changes
-			cb = lambda : 42
+			cb = lambda : AmbientSoundComponent.play_special('error')
 			helptext = u""
+			city_name_label.disable_cursor_change_on_hover()
 		cityinfo.mapEvents({
 			'city_name': cb
 		})
-		cityinfo.findChild(name="city_name").helptext = helptext
+		city_name_label.helptext = helptext
 
 		foundlabel = cityinfo.child_finder('owner_emblem')
 		foundlabel.image = 'content/gui/images/tabwidget/emblems/emblem_%s.png' % (self.settlement.owner.color.name)
@@ -276,8 +275,8 @@ class IngameGui(LivingObject):
 		players.add(self.session.world.pirate)
 		players.discard(self.session.world.player)
 		players.discard(None) # e.g. when the pirate is disabled
-		if len(players) == 0: # this dialog is pretty useless in this case
-			self.main_gui.show_popup(_("No diplomacy possible"), \
+		if not players: # this dialog is pretty useless in this case
+			self.main_gui.show_popup(_("No diplomacy possible"),
 			                         _("Cannot do diplomacy as there are no other players."))
 			return
 
@@ -288,7 +287,7 @@ class IngameGui(LivingObject):
 		self.show_menu(tab)
 
 	def show_multi_select_tab(self):
-		tab = TabWidget(self, tabs = [SelectMultiTab(self.session)], name = 'select_multi')
+		tab = TabWidget(self, tabs=[SelectMultiTab(self.session)], name='select_multi')
 		self.show_menu(tab)
 
 	def show_build_menu(self, update=False):
@@ -310,9 +309,8 @@ class IngameGui(LivingObject):
 			# indicates a mistake in the mental model of the user. Display a hint.
 			tab = TabWidget(self, tabs=[ TabInterface(widget="buildtab_no_settlement.xml") ])
 		else:
-			btabs = [BuildTab(index+1, self.callbacks_build, self.session) for index in \
-							 xrange(self.session.world.player.settler_level+1)]
-			tab = TabWidget(self, tabs=btabs, name="build_menu_tab_widget", \
+			btabs = BuildTab.create_tabs(self.session, self._build)
+			tab = TabWidget(self, tabs=btabs, name="build_menu_tab_widget",
 											active_tab=BuildTab.last_active_build_tab)
 		self.show_menu(tab)
 
@@ -321,7 +319,7 @@ class IngameGui(LivingObject):
 			instance.get_component(SelectableComponent).deselect()
 		self.session.selected_instances.clear()
 
-	def _build(self, building_id, unit = None):
+	def _build(self, building_id, unit=None):
 		"""Calls the games buildingtool class for the building_id.
 		@param building_id: int with the building id that is to be built.
 		@param unit: weakref to the unit, that builds (e.g. ship for warehouse)"""
@@ -334,8 +332,6 @@ class IngameGui(LivingObject):
 
 	def toggle_road_tool(self):
 		if not isinstance(self.session.cursor, BuildingTool) or self.session.cursor._class.id != BUILDINGS.TRAIL:
-			if isinstance(self.session.cursor, BuildingTool):
-				print self.session.cursor._class.id, BUILDINGS.TRAIL
 			self._build(BUILDINGS.TRAIL)
 		else:
 			self.session.set_cursor()
@@ -367,6 +363,8 @@ class IngameGui(LivingObject):
 				self._old_menu.add_remove_listener( Callback(self.show_menu, None) )
 			self._old_menu.show()
 			self.minimap_to_front()
+
+		TabWidgetChanged.broadcast(self)
 
 	def hide_menu(self):
 		self.show_menu(None)
@@ -430,7 +428,7 @@ class IngameGui(LivingObject):
 		"""
 		new_name = self.widgets['change_name'].collectData('new_name')
 		self.widgets['change_name'].findChild(name='new_name').text = u''
-		if not (len(new_name) == 0 or new_name.isspace()):
+		if not new_name or new_name.isspace():
 			# different namedcomponent classes share the name
 			RenameObject(instance.get_component_by_name(NamedComponent.NAME), new_name).execute(self.session)
 		self._hide_change_name_dialog()
@@ -443,7 +441,7 @@ class IngameGui(LivingObject):
 		}
 		self.main_gui.on_escape = self._hide_save_map_dialog
 		dialog = self.widgets['save_map']
-		name = dialog.findChild(name = 'map_name')
+		name = dialog.findChild(name='map_name')
 		name.text = u''
 		dialog.mapEvents(events)
 		name.capture(Callback(self.save_map))
@@ -499,6 +497,12 @@ class IngameGui(LivingObject):
 			if hasattr(menu, "name") and menu.name == "build_menu_tab_widget":
 				# player changed and build menu is currently displayed
 				self.show_build_menu(update=True)
+
+			# TODO: Use a better measure then first tab
+			# Quite fragile, makes sure the tablist in the mainsquare menu is updated
+			if hasattr(menu, '_tabs') and isinstance(menu._tabs[0], MainSquareOverviewTab):
+				instance = list(self.session.selected_instances)[0]
+				instance.get_component(SelectableComponent).show_menu(jump_to_tabclass=type(menu.current_tab))
 
 	def show_chat_dialog(self):
 		"""Show a dialog where the user can enter a chat message"""

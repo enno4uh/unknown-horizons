@@ -18,12 +18,13 @@
 # Free Software Foundation, Inc.,
 # 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 # ###################################################
+
 import os
 import tempfile
 
 from horizons.command.building import Build, Tear
 from horizons.component.storagecomponent import StorageComponent
-from horizons.component.collectingcompontent import CollectingComponent
+from horizons.component.collectingcomponent import CollectingComponent
 from horizons.world.production.producer import Producer, QueueProducer
 from horizons.constants import BUILDINGS, RES, PRODUCTIONLINES, GAME
 from horizons.util.worldobject import WorldObject
@@ -68,6 +69,7 @@ def test_ticket_979(s, p):
 	# Let the collector reach the not existing target
 	s.run(seconds=10)
 
+
 @game_test
 def test_ticket_1016(s, p):
 	settlement, island = settle(s)
@@ -89,13 +91,12 @@ def test_ticket_1016(s, p):
 	s.run(seconds=30)
 
 
-
 @game_test
 def test_ticket_1005(s, p):
 	settlement, island = settle(s)
 	assert len(s.world.ships) == 2
 
-	builder = Build(BUILDINGS.BOATBUILDER, 35, 20, island, settlement=settlement)(p)
+	builder = Build(BUILDINGS.BOAT_BUILDER, 35, 20, island, settlement=settlement)(p)
 	builder.get_component(StorageComponent).inventory.alter(RES.TEXTILE, 5)
 	builder.get_component(StorageComponent).inventory.alter(RES.BOARDS, 4)
 	builder.get_component(Producer).add_production_by_id(15)
@@ -110,7 +111,7 @@ def test_ticket_1232(s, p):
 	settlement, island = settle(s)
 	assert len(s.world.ships) == 2
 
-	boat_builder = Build(BUILDINGS.BOATBUILDER, 35, 20, island, settlement=settlement)(p)
+	boat_builder = Build(BUILDINGS.BOAT_BUILDER, 35, 20, island, settlement=settlement)(p)
 	boat_builder.get_component(StorageComponent).inventory.alter(RES.TEXTILE, 10)
 	boat_builder.get_component(StorageComponent).inventory.alter(RES.BOARDS, 8)
 	assert isinstance(boat_builder.get_component(Producer),QueueProducer)
@@ -151,6 +152,7 @@ def test_tool_brick_interference():
 	test_tool_production_chain()
 	test_brick_production_chain()
 
+
 @game_test(manual_session=True)
 def test_ticket_1427():
 	"""Boatbuilder production progress should be saved properly"""
@@ -158,7 +160,7 @@ def test_ticket_1427():
 	session, player = new_session()
 	settlement, island = settle(session)
 
-	boat_builder = Build(BUILDINGS.BOATBUILDER, 35, 20, island, settlement=settlement)(player)
+	boat_builder = Build(BUILDINGS.BOAT_BUILDER, 35, 20, island, settlement=settlement)(player)
 	worldid = boat_builder.worldid
 
 	# Make sure no boards are available
@@ -241,6 +243,7 @@ def test_settler_level(s, p):
 	# should have leveled up
 	assert settler.level == level + 1
 
+
 @game_test
 def test_ticket_1523(s, p):
 	settlement, island = settle(s)
@@ -257,6 +260,7 @@ def test_ticket_1523(s, p):
 	assert not farm.get_component(Producer).capacity_utilisation_below(0.4)
 	assert farm.get_component(Producer).capacity_utilisation > 0.4
 
+
 @game_test
 def test_ticket_1561(s, p):
 	settlement, island = settle(s)
@@ -272,7 +276,6 @@ def test_ticket_1561(s, p):
 	residence2 = Build(BUILDINGS.RESIDENTIAL, 30, 32, island, settlement=settlement)(p)
 	s.run(ticks=1)
 	assert residence2.level == 0
-
 
 
 @game_test

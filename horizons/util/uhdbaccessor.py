@@ -19,7 +19,7 @@
 # 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 # ###################################################
 
-from random import randint
+import random
 
 from horizons.constants import PATHS
 from horizons.util import decorators
@@ -49,20 +49,15 @@ class UhDbAccessor(DbReader):
 
 	# Resource table
 
-	def get_res_name(self, id, only_if_tradeable=False, only_if_inventory=False):
-		"""
-		Returns the name to a specific resource id.
-		@param id: int resource's id, of which the name is returned
-		"""
-		sql = "SELECT name FROM resource WHERE id = ?"
-		if only_if_tradeable:
-			sql += " AND tradeable = 1"
-		if only_if_inventory:
-			sql += " AND shown_in_inventory = 1"
-		try:
-			return _(self.cached_query(sql, id)[0][0])
-		except IndexError:
-			return None
+	def get_res_name(self, id):
+		"""Returns the translated name for a specific resource id.
+		@param id: int resource's id, of which the name is returned """
+		name = self.cached_query("SELECT name FROM resource WHERE id = ?", id)[0][0]
+		return _(name)
+
+	def get_res_inventory_display(self, id):
+		sql = "SELECT shown_in_inventory FROM resource WHERE id = ?"
+		return self.cached_query(sql, id)[0][0]
 
 	def get_res_value(self, id):
 		"""Returns the resource's value
@@ -84,7 +79,7 @@ class UhDbAccessor(DbReader):
 		return map(lambda x: x[0], db_data)
 
 	def get_res_id_and_icon(self, only_tradeable=False, only_inventory=False):
-		"""Returns a list of all resources and the matching icons.
+		"""Returns a list of all resources and the matching icon paths.
 		@param only_tradeable: return only those you can trade.
 		@param only_inventory: return only those displayed in inventories.
 		@return: list of tuples: (resource ids, resource icon)"""
@@ -94,7 +89,7 @@ class UhDbAccessor(DbReader):
 		if only_inventory:
 			sql += " AND shown_in_inventory = 1 "
 		query = self.cached_query(sql)
-		format_data = lambda res: (res, get_res_icon_path(res, 50))
+		format_data = lambda res: (res, get_res_icon_path(res))
 		return [format_data(row[0]) for row in query]
 
 	# Sound table
@@ -172,7 +167,7 @@ class UhDbAccessor(DbReader):
 		"""
 		@param msg_id_string: string id of the message
 		"""
-		sql = "SELECT text FROM message WHERE id_string = ?"
+		sql = "SELECT text FROM message_text WHERE id_string = ?"
 		return self.cached_query(sql, msg_id_string)[0][0]
 
 	def get_msg_icon_id(self, msg_id_string):
@@ -199,14 +194,6 @@ class UhDbAccessor(DbReader):
 
 	# production_line table
 
-	def get_settler_production_lines(self, level):
-		"""Returns a list of settler's production lines for a specific level
-		@param level: int level for which to return the production lines
-		@return: list of production lines"""
-		return self.cached_query("SELECT production_line \
-		                          FROM settler_production_line \
-		                          WHERE level = ?", level)
-
 	def get_settler_name(self, level):
 		"""Returns the name for a specific settler level
 		@param level: int settler's level
@@ -228,68 +215,42 @@ class UhDbAccessor(DbReader):
 	def get_settler_inhabitants_max(self, level):
 		return self.cached_query("SELECT inhabitants_max FROM settler_level \
 		                          WHERE level=?", level)[0][0]
-
-	def get_settler_inhabitants(self, building_id):
-		return self.cached_query("SELECT inhabitants FROM settler WHERE rowid=?",
-		                         building_id)[0][0]
-
-	def get_settler_upgrade_material_prodline(self, level):
-		db_result = self.cached_query("SELECT production_line FROM upgrade_material \
-		                          WHERE level = ?", level)
-		return db_result[0][0] if db_result else None
-
-	def get_production_line_data(self, production_line_id):
-		consumption = self.cached_query("SELECT resource, amount FROM production \
-			              WHERE production_line = ? AND amount < 0 ORDER BY amount ASC", production_line_id)
-		production = self.cached_query("SELECT resource, amount FROM production \
-			             WHERE production_line = ? AND amount > 0 ORDER BY amount ASC", production_line_id)
-		consumption = list([list(x) for x in consumption])
-		production = list([list(x) for x in production])
-		(changes_anim, time, default) = self.cached_query("SELECT changes_animation, time, enabled_by_default FROM production_line WHERE id=?", production_line_id)[0]
-		prod_line =  { 'time': int(time) }
-		if changes_anim == 0:
-			prod_line['changes_animation'] = False
-		if default == 0:
-			prod_line['enabled_by_default'] = False
-		if len(production) > 0:
-			prod_line['produces'] = production
-		if len(consumption) > 0:
-			prod_line['consumes'] = consumption
-		return prod_line
-
+	
+	def get_settler_inhabitants_min(self, level):
+		"""The minimum inhabitants before a setter levels down
+		is the maximum inhabitants of the previous level."""
+		if level == 0:
+			return 0
+		else: 
+			return self.cached_query("SELECT inhabitants_max FROM settler_level \
+			                          WHERE level=?", level-1)[0][0]
 
 	# Misc
 
 	def get_player_start_res(self):
 		"""Returns resources, that players should get at startup as dict: { res : amount }"""
-		ret = {}
-		for res, amount in self.cached_query("SELECT resource, amount FROM player_start_res"):
-			ret[res] = amount
-		return ret
+		start_res = self.cached_query("SELECT resource, amount FROM player_start_res")
+		return dict(start_res)
 
 	@decorators.cachedmethod
 	def get_storage_building_capacity(self, storage_type):
 		"""Returns the amount that a storage building can store of every resource."""
 		return self("SELECT size FROM storage_building_capacity WHERE type = ?", storage_type)[0][0]
 
-	def get_resource_deposit_resources(self, deposit_id):
-		"""Returns the range of resources a resource deposit has at the beginning."""
-		return self("SELECT resource, min_amount, max_amount FROM deposit_resources WHERE id = ?", deposit_id)
-
-	# Tile stes
+	# Tile sets
 
 	def get_random_tile_set(self, ground_id):
 		"""Returns an tile set for a tile of type id"""
 		sql = "SELECT set_id FROM tile_set \
 		       WHERE ground_id = ?"
 		db_data = self.cached_query(sql, ground_id)
-		return db_data[randint(0, len(db_data) - 1)] if db_data else None
+		return random.choice(db_data) if db_data else None
 
 	@decorators.cachedmethod
 	def get_translucent_buildings(self):
 		"""Returns building types that should become translucent on demand"""
 		# use set because of quick contains check
-		return frozenset( i[0] for i in self("SELECT type FROM translucent_buildings") )
+		return frozenset( id for (id, b) in Entities.buildings.iteritems() if b.translucent )
 
 	# Weapon table
 
@@ -306,7 +267,7 @@ class UhDbAccessor(DbReader):
 
 	def get_unit_type_name(self, type_id):
 		"""Returns the name of a unit type identified by its type"""
-		return self.cached_query("SELECT name FROM unit where id = ?", type_id)[0][0]
+		return Entities.units[type_id].name
 
 
 def read_savegame_template(db):

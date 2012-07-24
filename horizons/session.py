@@ -19,6 +19,7 @@
 # 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 # ###################################################
 
+import errno
 import os
 import os.path
 import logging
@@ -49,24 +50,24 @@ from horizons.component.selectablecomponent import SelectableComponent, Selectab
 from horizons.savegamemanager import SavegameManager
 from horizons.scenario import ScenarioEventHandler
 from horizons.component.ambientsoundcomponent import AmbientSoundComponent
-from horizons.constants import GAME_SPEED, PATHS
+from horizons.constants import GAME_SPEED, PATHS, LAYERS
 from horizons.world.managers.statusiconmanager import StatusIconManager
 from horizons.messaging import MessageBus
 
 class Session(LivingObject):
-	"""Session class represents the games main ingame view and controls cameras and map loading.
+	"""The Session class represents the game's main ingame view and controls cameras and map loading.
 	It is alive as long as a game is running.
-	Many objects require a reference to this, which makes it a pseudo-global, from what we would
-	like to move away long-term. This is where we hope the components come into play, which
-	you will encounter later
+	Many objects require a reference to this, which makes it a pseudo-global, from which we would
+	like to move away in the long term. This is where we hope the components come into play, which
+	you will encounter later.
 
-	This is the most important class if you are going to hack on Unknown Horizons, it provides most of
+	This is the most important class if you are going to hack on Unknown Horizons; it provides most of
 	the important ingame variables.
 	Here's a small list of commonly used attributes:
 
 	* world - horizons.world instance of the currently running horizons. Stores players and islands,
 		which store settlements, which store buildings, which have productions and collectors.
-		Therefore world deserves its name, it contains the whole game state.
+		Therefore, world deserves its name -- it contains the whole game state.
 	* scheduler - horizons.scheduler instance. Used to execute timed events. Master of time in UH.
 	* manager - horizons.manager instance. Used to execute commands (used to apply user interactions).
 		There is a singleplayer and a multiplayer version. Our mp system works by the mp-manager not
@@ -123,7 +124,10 @@ class Session(LivingObject):
 		LastActivePlayerSettlementManager.create_instance(self)
 
 
-		self.status_icon_manager = StatusIconManager(self)
+		self.status_icon_manager = StatusIconManager(
+		  renderer=self.view.renderer['GenericRenderer'],
+		  layer=self.view.layers[LAYERS.OBJECTS]
+		  )
 
 		self.selected_instances = set()
 		self.selection_groups = [set() for _ in range(10)]  # List of sets that holds the player assigned unit groups.
@@ -254,7 +258,7 @@ class Session(LivingObject):
 
 	def load(self, savegame, players, trader_enabled, pirate_enabled,
 	         natural_resource_multiplier, is_scenario=False, campaign=None,
-	         force_player_id=None, disasters_enabled=True):
+	         force_player_id=None, disasters_enabled=True, is_multiplayer=False):
 		"""Loads a map. Key method for starting a game.
 		@param savegame: path to the savegame database.
 		@param players: iterable of dictionaries containing id, name, color, local, ai, and difficulty
@@ -263,7 +267,7 @@ class Session(LivingObject):
 		"""
 		"""
 		TUTORIAL: Here you see how the vital game elements (and some random things that are also required)
-		are initialised
+		are initialised.
 		"""
 		if is_scenario:
 			# savegame is a yaml file, that contains reference to actual map file
@@ -281,7 +285,7 @@ class Session(LivingObject):
 
 		# load how often the game has been saved (used to know the difference between
 		# a loaded and a new game)
-		self.savecounter = 0 if not 'savecounter' in savegame_data else savegame_data['savecounter']
+		self.savecounter = savegame_data.get('savecounter', 0)
 
 		if savegame_data.get('rng_state', None):
 			rng_state_list = json.loads( savegame_data['rng_state'] )
@@ -302,7 +306,7 @@ class Session(LivingObject):
 			# NOTE: this must be sorted before iteration, cause there is no defined order for
 			#       iterating a dict, and it must happen in the same order for mp games.
 			for i in sorted(players, lambda p1, p2: cmp(p1['id'], p2['id'])):
-				self.world.setup_player(i['id'], i['name'], i['color'], i['local'], i['ai'], i['difficulty'])
+				self.world.setup_player(i['id'], i['name'], i['color'], i['clientid'] if is_multiplayer else None, i['local'], i['ai'], i['difficulty'])
 			self.world.set_forced_player(force_player_id)
 			center = self.world.init_new_world(trader_enabled, pirate_enabled, natural_resource_multiplier)
 			self.view.center(center[0], center[1])
@@ -327,7 +331,7 @@ class Session(LivingObject):
 		self.current_cursor = 'default'
 		self.cursor = SelectionTool(self)
 		# Set cursor correctly, menus might need to be opened.
-		# Open menus later, they may need unit data not yet inited
+		# Open menus later; they may need unit data not yet inited
 		self.cursor.apply_select()
 
 		Scheduler().before_ticking()
@@ -336,8 +340,8 @@ class Session(LivingObject):
 		assert hasattr(self.world, "player"), 'Error: there is no human player'
 		"""
 		TUTORIAL:
-		That's it. After that, we call start() to activate the timer, and we're on live.
-		From here on you should digg into the classes that are loaded above, especially the world class.
+		That's it. After that, we call start() to activate the timer, and we're live.
+		From here on you should dig into the classes that are loaded above, especially the world class
 		(horizons/world/__init__.py). It's where the magic happens and all buildings and units are loaded.
 		"""
 
@@ -346,7 +350,7 @@ class Session(LivingObject):
 		old = self.timer.ticks_per_second
 		self.timer.ticks_per_second = ticks
 		self.view.map.setTimeMultiplier(float(ticks) / float(GAME_SPEED.TICKS_PER_SECOND))
-		if old == 0 and self.timer.tick_next_time is None: #back from paused state
+		if old == 0 and self.timer.tick_next_time is None: # back from paused state
 			if self.paused_time_missing is None:
 				# happens if e.g. a dialog pauses the game during startup on hotkeypress
 				self.timer.tick_next_time = time.time()
@@ -496,16 +500,10 @@ class Session(LivingObject):
 			self.gui.show_error_popup(headline, descr, advice, unicode(e))
 			return self.save() # retry with new savegamename entered by the user
 			# this must not happen with quicksave/autosave
-		except ZeroDivisionError as err:
-			# TODO:
-			# this should say WindowsError, but that somehow now leads to a NameError
-			if err.winerror == 5:
-				self.gui.show_error_popup(_("Access is denied"), \
-				                          _("The savegame file is probably read-only."))
-				return self.save()
-			elif err.winerror == 32:
-				self.gui.show_error_popup(_("File used by another process"), \
-				                          _("The savegame file is currently used by another program."))
+		except OSError as e:
+			if e.errno == errno.EACCES:
+				self.gui.show_error_popup(_("Access is denied"),
+				                          _("The savegame file could be read-only or locked by another process."))
 				return self.save()
 			raise
 
@@ -528,7 +526,7 @@ class Session(LivingObject):
 
 			rng_state = json.dumps( self.random.getstate() )
 			SavegameManager.write_metadata(db, self.savecounter, rng_state)
-			# make sure everything get's written now
+			# make sure everything gets written now
 			db("COMMIT")
 			db.close()
 			return True

@@ -23,10 +23,10 @@
 
 """TUTORIAL: Welcome to the Unknown Horizons in-code tutorial!
 This is a guide for people who are interested in how the code works.
-All parts of it are marked with 'TUTORIAL', every entry contains a pointer
-to the next step. Have fun :-)
+All parts of it are marked with 'TUTORIAL', and every entry contains
+a pointer to the next step. Have fun :-)
 
-This is the Unknown Horizons launcher, it looks for FIFE and tries
+This is the Unknown Horizons launcher; it looks for FIFE and tries
 to start the game. You usually don't need to work with this directly.
 If you want to dig into the game, continue to horizons/main.py. """
 
@@ -46,7 +46,6 @@ import optparse
 import signal
 import traceback
 import platform
-import struct
 
 # NOTE: do NOT import anything from horizons.* into global scope
 # this will break any run_uh imports from other locations (e.g. _get_version())
@@ -67,7 +66,8 @@ def show_error_message(title, message):
 	exit(1)
 
 if __name__ == '__main__':
-	if platform.python_version_tuple()[0] != '2':
+    	# python up to version 2.6.1 returns an int. http://bugs.python.org/issue5561
+	if platform.python_version_tuple()[0] not in (2,'2'):
 		show_error_message('Unsupported Python version', 'Python 2 is required to run Unknown Horizons.')
 
 def log():
@@ -105,83 +105,88 @@ def get_option_parser():
 	"""Returns inited OptionParser object"""
 	from horizons.constants import VERSION
 	p = optparse.OptionParser(usage="%prog [options]", version=VERSION.string())
-	p.add_option("-d", "--debug", dest="debug", action="store_true", \
-				       default=False, help="Enable debug output to stderr and a logfile.")
-	p.add_option("--fife-path", dest="fife_path", metavar="<path>", \
-				       help="Specify the path to FIFE root directory.")
-	p.add_option("--restore-settings", dest="restore_settings", action="store_true", \
-				       default=False, help="Restores the default settings. Useful if Unknown Horizons crashes on startup due to misconfiguration.")
-	p.add_option("--mp-master", dest="mp_master", metavar="<ip:port>", \
-				       help="Specify alternative multiplayer master server.")
-	p.add_option("--mp-bind", dest="mp_bind", metavar="<ip:port>", \
-				       help="Specify network address to bind local network client to. This is useful if NAT holepunching is not working but you can forward a static port.")
+	p.add_option("-d", "--debug", dest="debug", action="store_true",
+	             default=False, help="Enable debug output to stderr and a logfile.")
+	p.add_option("--fife-path", dest="fife_path", metavar="<path>",
+	             help="Specify the path to FIFE root directory.")
+	p.add_option("--restore-settings", dest="restore_settings", action="store_true", default=False,
+	             help="Restores the default settings. "
+	                  "Useful if Unknown Horizons crashes on startup due to misconfiguration.")
+	p.add_option("--mp-master", dest="mp_master", metavar="<ip:port>",
+	             help="Specify alternative multiplayer master server.")
+	p.add_option("--mp-bind", dest="mp_bind", metavar="<ip:port>",
+	             help="Specify network address to bind local network client to. "
+	                  "This is useful if NAT holepunching is not working but you can forward a static port.")
 
 
-	start_uh_group = optparse.OptionGroup(p, "Starting Unknown Horizons")
-	start_uh_group.add_option("--start-map", dest="start_map", metavar="<map>", \
-				                    help="Starts <map>. <map> is the mapname.")
-	start_uh_group.add_option("--start-random-map", dest="start_random_map", action="store_true", \
-				                    help="Starts a random map.")
-	start_uh_group.add_option("--start-specific-random-map", dest="start_specific_random_map", metavar="<seed>", \
-									help="Starts a random map with seed <seed>.")
-	start_uh_group.add_option("--start-scenario", dest="start_scenario", metavar="<scenario>", \
-				                    help="Starts <scenario>. <scenario> is the scenarioname.")
-	start_uh_group.add_option("--start-campaign", dest="start_campaign", metavar="<campaign>", \
-				                    help="Starts <campaign>. <campaign> is the campaign name.")
-	start_uh_group.add_option("--start-dev-map", dest="start_dev_map", action="store_true", \
-				                    default=False, help="Starts the development map without displaying the main menu.")
-	start_uh_group.add_option("--load-map", dest="load_map", metavar="<save>", \
-				                    help="Loads a saved game. <save> is the savegamename.")
-	start_uh_group.add_option("--load-last-quicksave", dest="load_quicksave", action="store_true", \
-				                    help="Loads the last quicksave.")
-	start_uh_group.add_option("--nature-seed", dest="nature_seed", type="int", \
-				                    help="Sets the seed used to generate trees, fish, and other natural resources.")
-	p.add_option_group(start_uh_group)
+	start_uh = optparse.OptionGroup(p, "Starting Unknown Horizons")
+	start_uh.add_option("--start-map", dest="start_map", metavar="<map>",
+	             help="Starts <map>. <map> is the mapname.")
+	start_uh.add_option("--start-random-map", dest="start_random_map", action="store_true",
+	             help="Starts a random map.")
+	start_uh.add_option("--start-specific-random-map", dest="start_specific_random_map",
+	             metavar="<seed>", help="Starts a random map with seed <seed>.")
+	start_uh.add_option("--start-scenario", dest="start_scenario", metavar="<scenario>",
+	             help="Starts <scenario>. <scenario> is the scenarioname.")
+	start_uh.add_option("--start-campaign", dest="start_campaign", metavar="<campaign>",
+	             help="Starts <campaign>. <campaign> is the campaign name.")
+	start_uh.add_option("--start-dev-map", dest="start_dev_map", action="store_true",
+	             default=False, help="Starts the development map without displaying the main menu.")
+	start_uh.add_option("--load-map", dest="load_map", metavar="<save>",
+	             help="Loads a saved game. <save> is the savegamename.")
+	start_uh.add_option("--load-last-quicksave", dest="load_quicksave", action="store_true",
+	             help="Loads the last quicksave.")
+	start_uh.add_option("--nature-seed", dest="nature_seed", type="int",
+	             help="Sets the seed used to generate trees, fish, and other natural resources.")
+	p.add_option_group(start_uh)
 
 	ai_group = optparse.OptionGroup(p, "AI options")
-	ai_group.add_option("--ai-players", dest="ai_players", metavar="<ai_players>", type="int", default=0, \
+	ai_group.add_option("--ai-players", dest="ai_players", metavar="<ai_players>",
+	             type="int", default=0,
 	             help="Uses <ai_players> AI players (excludes the possible human-AI hybrid; defaults to 0).")
-	ai_group.add_option("--human-ai-hybrid", dest="human_ai", action="store_true", \
+	ai_group.add_option("--human-ai-hybrid", dest="human_ai", action="store_true",
 	             help="Makes the human player a human-AI hybrid (for development only).")
-	ai_group.add_option("--force-player-id", dest="force_player_id", metavar="<force_player_id>", type="int", default=None, \
+	ai_group.add_option("--force-player-id", dest="force_player_id",
+	             metavar="<force_player_id>", type="int", default=None,
 	             help="Set the player with id <force_player_id> as the active (human) player.")
-	ai_group.add_option("--ai-highlights", dest="ai_highlights", action="store_true", \
+	ai_group.add_option("--ai-highlights", dest="ai_highlights", action="store_true",
 	             help="Shows AI plans as highlights (for development only).")
 	p.add_option_group(ai_group)
 
 	dev_group = optparse.OptionGroup(p, "Development options")
-	dev_group.add_option("--debug-log-only", dest="debug_log_only", action="store_true", \
-				               default=False, help="Write debug output only to logfile, not to console. Implies -d.")
-	dev_group.add_option("--debug-module", action="append", dest="debug_module", \
-				               metavar="<module>", default=[], \
-				               help="Enable logging for a certain logging module (for developing only).")
+	dev_group.add_option("--debug-log-only", dest="debug_log_only", action="store_true",
+	             default=False, help="Write debug output only to logfile, not to console. Implies -d.")
+	dev_group.add_option("--debug-module", action="append", dest="debug_module",
+	             metavar="<module>", default=[],
+	             help="Enable logging for a certain logging module (for developing only).")
 	dev_group.add_option("--logfile", dest="logfile", metavar="<filename>",
-				               help="Writes log to <filename> instead of to the uh-userdir")
-	dev_group.add_option("--fife-in-library-path", dest="fife_in_library_path", action="store_true", \
-				               default=False, help="For internal use only.")
-	dev_group.add_option("--profile", dest="profile", action="store_true", \
-				               default=False, help="Enable profiling (for developing only).")
-	dev_group.add_option("--max-ticks", dest="max_ticks", metavar="<max_ticks>", type="int", \
-				               help="Run the game for <max_ticks> ticks.")
-	dev_group.add_option("--string-previewer", dest="stringpreview", action="store_true", \
-				               default=False, help="Enable the string previewer tool for scenario writers")
-	dev_group.add_option("--no-preload", dest="nopreload", action="store_true", \
-				               default=False, help="Disable preloading while in main menu")
-	dev_group.add_option("--game-speed", dest="gamespeed", metavar="<game_speed>", type="int", \
-				               help="Run the game in the given speed (Values: 0.5, 1, 2, 3, 4, 6, 8, 11, 20)")
-	dev_group.add_option("--gui-test", dest="gui_test", metavar="<test>", \
-	                           default=False, help="INTERNAL. Use run_tests.py instead.")
-	dev_group.add_option("--gui-log", dest="log_gui", action="store_true", default=False, help="Log gui interactions")
-	dev_group.add_option("--sp-seed", dest="sp_seed", metavar="<seed>", type="int", \
-	                           help="Use this seed for singleplayer sessions.")
-	dev_group.add_option("--generate-minimap", dest="generate_minimap", \
-	                     metavar="<parameters>", help="Generate a minimap for a map")
-	dev_group.add_option("--create-mp-game", action="store_true", dest="create_mp_game", \
-	                     help="Create an multiplayer game with default settings.")
-	dev_group.add_option("--join-mp-game", action="store_true", dest="join_mp_game", \
-	                     help="Join first multiplayer game.")
+	             help="Writes log to <filename> instead of to the uh-userdir")
+	dev_group.add_option("--fife-in-library-path", dest="fife_in_library_path", action="store_true",
+	             default=False, help="For internal use only.")
+	dev_group.add_option("--profile", dest="profile", action="store_true",
+	             default=False, help="Enable profiling (for developing only).")
+	dev_group.add_option("--max-ticks", dest="max_ticks", metavar="<max_ticks>", type="int",
+	             help="Run the game for <max_ticks> ticks.")
+	dev_group.add_option("--string-previewer", dest="stringpreview", action="store_true",
+	             default=False, help="Enable the string previewer tool for scenario writers")
+	dev_group.add_option("--no-preload", dest="nopreload", action="store_true",
+	             default=False, help="Disable preloading while in main menu")
+	dev_group.add_option("--game-speed", dest="gamespeed", metavar="<game_speed>", type="int",
+	             help="Run the game in the given speed (Values: 0.5, 1, 2, 3, 4, 6, 8, 11, 20)")
+	dev_group.add_option("--gui-test", dest="gui_test", metavar="<test>",
+	             default=False, help="INTERNAL. Use run_tests.py instead.")
+	dev_group.add_option("--gui-log", dest="log_gui", action="store_true",
+	             default=False, help="Log gui interactions")
+	dev_group.add_option("--sp-seed", dest="sp_seed", metavar="<seed>", type="int",
+	             help="Use this seed for singleplayer sessions.")
+	dev_group.add_option("--generate-minimap", dest="generate_minimap",
+	             metavar="<parameters>", help="Generate a minimap for a map")
+	dev_group.add_option("--create-mp-game", action="store_true", dest="create_mp_game",
+	             help="Create an multiplayer game with default settings.")
+	dev_group.add_option("--join-mp-game", action="store_true", dest="join_mp_game",
+	             help="Join first multiplayer game.")
 	dev_group.add_option("--interactive-shell", action="store_true", dest="interactive_shell",
-	                     help="Starts an IPython kernel. Connect to the shell with: ipython console --existing")
+	             help="Starts an IPython kernel. Connect to the shell with: ipython console --existing")
 	p.add_option_group(dev_group)
 
 	return p
@@ -246,7 +251,7 @@ def main():
 	try:
 		import yaml
 	except ImportError:
-		headline = _("Error: Unable to find required libraries")
+		headline = _("Error: Unable to find required library \"PyYAML\".")
 		msg = _("We are sorry to inform you that a library that is required by Unknown Horizons, is missing and needs to be installed.") + "\n" + \
 		    _("Installers for Windows users are available at \"http://pyyaml.org/wiki/PyYAML\", Linux users should find it in their packagement management system under the name \"pyyaml\" or \"python-yaml\".")
 		standalone_error_popup(headline, msg)
@@ -289,7 +294,7 @@ def setup_debugging(options):
 
 	# not too nice way of sharing code, but it is necessary because code from this file
 	# can't be accessed elsewhere on every distribution, and we can't just access other code.
-	# however passing options is guaranteed to work
+	# however, passing options is guaranteed to work
 	options.setup_debugging = setup_debugging
 
 	# apply options
@@ -300,7 +305,7 @@ def setup_debugging(options):
 			print('No such logger: %s' % module)
 			sys.exit(1)
 		logging.getLogger(module).setLevel(logging.DEBUG)
-	if options.debug or len(options.debug_module) > 0 or options.debug_log_only:
+	if options.debug or options.debug_module or options.debug_log_only:
 		options.debug = True
 		# also log to file
 		# init a logfile handler with a dynamic filename
@@ -308,8 +313,8 @@ def setup_debugging(options):
 		if options.logfile:
 			logfilename = options.logfile
 		else:
-			logfilename = os.path.join(PATHS.LOG_DIR, "unknown-horizons-%s.log" % \
-												         time.strftime("%Y-%m-%d_%H-%M-%S"))
+			logfilename = os.path.join(PATHS.LOG_DIR, "unknown-horizons-%s.log" %
+			                           time.strftime("%Y-%m-%d_%H-%M-%S"))
 		print('Logging to %s' % logfilename.encode('utf-8', 'replace'))
 		# create logfile
 		logfile = open(logfilename, 'w')
@@ -385,7 +390,7 @@ def init_environment():
 		# (but skip on second run, else we've got an endless loop)
 		find_FIFE(options.fife_path)
 
-	#find FIFE and setup search paths, if it can't be imported yet
+	# find FIFE and setup search paths, if it can't be imported yet
 	setup_fife(sys.argv)
 
 
@@ -426,7 +431,7 @@ def get_fife_path(fife_custom_path=None):
 
 				log().debug("Found FIFE in %s", fife_path)
 
-				#add python paths (<fife>/engine/extensions <fife>/engine/swigwrappers/python)
+				# add python paths (<fife>/engine/extensions <fife>/engine/swigwrappers/python)
 				pythonpaths = [ os.path.join( fife_path, 'engine/python') ]
 				for path in pythonpaths:
 					if os.path.exists(path):
@@ -436,7 +441,7 @@ def get_fife_path(fife_custom_path=None):
 					else:
 						os.environ['PYTHONPATH'] = path
 
-				#add windows paths (<fife>/.)
+				# add windows paths (<fife>/.)
 				if 'PATH' in os.environ:
 					os.environ['PATH'] += os.path.pathsep + fife_path
 				else:

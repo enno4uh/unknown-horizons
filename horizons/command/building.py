@@ -34,8 +34,8 @@ from horizons.component.storagecomponent import StorageComponent
 
 class Build(Command):
 	"""Command class that builds an object."""
-	def __init__(self, building, x, y, island, rotation = 45, \
-	             ship = None, ownerless=False, settlement=None, tearset=None, data=None, action_set_id=None):
+	def __init__(self, building, x, y, island, rotation=45, ship=None, ownerless=False,
+	             settlement=None, tearset=None, data=None, action_set_id=None):
 		"""Create the command
 		@param building: building class that is to be built or the id of the building class.
 		@param x, y: int coordinates where the object is to be built.
@@ -74,9 +74,9 @@ class Build(Command):
 
 		# check once agaion. needed for MP because of the execution delay.
 		buildable_class = Entities.buildings[self.building_class]
-		build_position = buildable_class.check_build(session, Point(self.x, self.y), \
-		  rotation=self.rotation,\
-			check_settlement=issuer is not None, \
+		build_position = buildable_class.check_build(session, Point(self.x, self.y),
+			rotation=self.rotation,
+			check_settlement=issuer is not None,
 			ship=WorldObject.get_object_by_id(self.ship) if self.ship is not None else None,
 			issuer=issuer)
 
@@ -101,8 +101,8 @@ class Build(Command):
 		# collect data before objs are torn
 		# required by e.g. the mines to find out about the status of the resource deposit
 		if hasattr(Entities.buildings[self.building_class], "get_prebuild_data"):
-			self.data.update( \
-			  Entities.buildings[self.building_class].get_prebuild_data(session, Point(self.x, self.y)) \
+			self.data.update(
+			  Entities.buildings[self.building_class].get_prebuild_data(session, Point(self.x, self.y))
 			  )
 
 		for worldid in sorted(self.tearset): # make sure iteration is the same order everywhere
@@ -112,14 +112,11 @@ class Build(Command):
 			except WorldObjectNotFound: # obj might have been removed already
 				pass
 
-		building = Entities.buildings[self.building_class]( \
-			session=session, \
-			x=self.x, y=self.y, \
-			rotation=self.rotation, owner=issuer if not self.ownerless else None, \
-			island=island, \
-			instance=None, \
-		  action_set_id=self.action_set_id, \
-		  **self.data
+		building = Entities.buildings[self.building_class](
+			session=session, x=self.x, y=self.y, rotation=self.rotation,
+			island=island, action_set_id=self.action_set_id, instance=None,
+			owner=issuer if not self.ownerless else None,
+			**self.data
 		)
 		building.initialize(**self.data)
 		# initialize must be called immediately after the construction
@@ -150,10 +147,15 @@ class Build(Command):
 
 		# unload the remaining resources on the human player ship if we just founded a new settlement
 		from horizons.world.player import HumanPlayer
-		if building.id == BUILDINGS.WAREHOUSE and isinstance(building.owner, HumanPlayer) and horizons.main.fife.get_uh_setting("AutoUnload"):
+		if building.id == BUILDINGS.WAREHOUSE \
+		and isinstance(building.owner, HumanPlayer) \
+		and horizons.main.fife.get_uh_setting("AutoUnload"):
 			ship = WorldObject.get_object_by_id(self.ship)
-			for res, amount in ship.get_component(StorageComponent).inventory.get_dump().iteritems(): # copy the inventory first because otherwise we would modify it while iterating
-				amount = min(amount, building.settlement.get_component(StorageComponent).inventory.get_free_space_for(res))
+			ship_inv = ship.get_component(StorageComponent).inventory
+			settlement_inv = building.settlement.get_component(StorageComponent).inventory
+			# copy the inventory first because otherwise we would modify it while iterating
+			for res, amount in ship_inv.get_dump().iteritems():
+				amount = min(amount, settlement_inv.get_free_space_for(res))
 				# execute directly, we are already in a command
 				TransferResource(amount, res, ship, building.settlement)(issuer=issuer)
 

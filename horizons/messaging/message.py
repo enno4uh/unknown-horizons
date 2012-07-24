@@ -177,3 +177,12 @@ class HoverInstancesChanged(Message):
 class NewDisaster(Message):
 	"""Sent when a building is affected by a disaster."""
 	arguments = ('building', 'disaster_class', )
+
+class TabWidgetChanged(Message):
+	"""Sent when the ingamegui displays a different set of tabs, i.e. the tabwidget is exchanged.
+	The tabs are not necessarily different from the old ones."""
+	pass
+
+class GuiAction(Message):
+	"""Sent on events pychan classifies as "action" """
+	pass

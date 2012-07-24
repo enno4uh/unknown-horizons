@@ -82,8 +82,8 @@ class AIPlayer(GenericAI):
 	log = logging.getLogger("ai.aiplayer")
 	tick_interval = 32
 
-	def __init__(self, session, id, name, color, difficulty_level, **kwargs):
-		super(AIPlayer, self).__init__(session, id, name, color, difficulty_level, **kwargs)
+	def __init__(self, session, id, name, color, clientid, difficulty_level, **kwargs):
+		super(AIPlayer, self).__init__(session, id, name, color, clientid, difficulty_level, **kwargs)
 		self.need_more_ships = False
 		self.need_feeder_island = False
 		self.personality_manager = PersonalityManager(self)
@@ -169,7 +169,7 @@ class AIPlayer(GenericAI):
 		calls = Scheduler().get_classinst_calls(self, current_callback)
 		assert len(calls) == 1, "got %s calls for saving %s: %s" % (len(calls), current_callback, calls)
 		remaining_ticks = max(calls.values()[0], 1)
-		db("INSERT INTO ai_player(rowid, need_more_ships, need_feeder_island, remaining_ticks) VALUES(?, ?, ?, ?)", \
+		db("INSERT INTO ai_player(rowid, need_more_ships, need_feeder_island, remaining_ticks) VALUES(?, ?, ?, ?)",
 			self.worldid, self.need_more_ships, self.need_feeder_island, remaining_ticks)
 
 		# save the ships
@@ -222,7 +222,7 @@ class AIPlayer(GenericAI):
 				self._settlement_manager_by_settlement_id[settlement_manager.settlement.worldid] = settlement_manager
 
 				# load the foundation ship preparing missions
-				db_result = db("SELECT rowid FROM ai_mission_prepare_foundation_ship WHERE settlement_manager = ?", \
+				db_result = db("SELECT rowid FROM ai_mission_prepare_foundation_ship WHERE settlement_manager = ?",
 					settlement_manager.worldid)
 				for (mission_id,) in db_result:
 					self.missions.add(PrepareFoundationShip.load(db, mission_id, self.report_success, self.report_failure))

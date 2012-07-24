@@ -49,36 +49,23 @@ def create_random_island(id_string):
 	@param id_string: random island id string
 	@return: sqlite db reader containing island
 	"""
-	# NOTE: the tilesystem will be redone soon, so constants indicating grounds are temporary
-	# here and will have to be changed anyways.
 	match_obj = re.match(_random_island_id_regexp, id_string)
 	assert match_obj
 	creation_method, width, height, seed = [ long(i) for i in match_obj.groups() ]
+	assert creation_method == 2, 'The only supported island creation method is 2.'
 
 	rand = random.Random(seed)
-
 	map_set = set()
-
-	# TODO: remove support for creation_method 0 and 1 (they have not been used for new maps since 2011-07-24)
-	# creation_method 0 - standard small island for the 3x3 grid
-	# creation_method 1 - large island
-	# creation_method 2 - a number of randomly sized and placed islands
 
 	# place this number of shapes
 	for i in xrange(15 + width * height / 45):
 		# place shape determined by shape_id on (x, y)
 		add = True
-		rect_chance = 6
-		if creation_method == 0:
-			shape_id = rand.randint(3, 5)
-		elif creation_method == 1:
-			shape_id = rand.randint(5, 8)
-		elif creation_method == 2:
-			shape_id = rand.randint(2, 8)
-			rect_chance = 29
-			if rand.randint(0, 4) == 0:
-				rect_chance = 13
-				add = False
+		shape_id = rand.randint(2, 8)
+		rect_chance = 29
+		if rand.randint(0, 4) == 0:
+			rect_chance = 13
+			add = False
 
 		shape = None
 		if rand.randint(1, rect_chance) == 1:
@@ -86,18 +73,12 @@ def create_random_island(id_string):
 			if add:
 				x = rand.randint(8, width - 7)
 				y = rand.randint(8, height - 7)
-				if creation_method == 0:
-					shape = Rect.init_from_topleft_and_size(x - 3, y - 3, 5, 5)
-				elif creation_method == 1:
-					shape = Rect.init_from_topleft_and_size(x - 5, y - 5, 8, 8)
-				elif creation_method == 2:
-					shape = Rect.init_from_topleft_and_size(x - 5, y - 5, rand.randint(2, 8), rand.randint(2, 8))
 			else:
 				x = rand.randint(0, width)
 				y = rand.randint(0, height)
-				shape = Rect.init_from_topleft_and_size(x - 5, y - 5, rand.randint(2, 8), rand.randint(2, 8))
+			shape = Rect.init_from_topleft_and_size(x - 5, y - 5, rand.randint(2, 8), rand.randint(2, 8))
 		else:
-			# use a circle, where radius is determined by shape_id
+			# use a circle such that the radius is determined by shape_id
 			radius = shape_id
 			if not add and rand.randint(0, 6) < 5:
 				x = rand.randint(-radius * 3 / 2, width + radius * 3 / 2)
@@ -492,6 +473,31 @@ def generate_map(seed, map_size, water_percent, max_island_size, preferred_islan
 		db("INSERT INTO island (x, y, file) VALUES(?, ?, ?)", rect.left, rect.top, island_string)
 
 	return filename
+
+def generate_random_seed(seed):
+	rand = random.Random(seed)
+	if rand.randint(0, 1) == 0:
+		# generate a random string of 1-5 letters a-z with a dash if there are 4 or more letters
+		seq = ''
+		for i in xrange(rand.randint(1, 5)):
+			seq += chr(97 + rand.randint(0, 25))
+		if len(seq) > 3:
+			split = rand.randint(2, len(seq) - 2)
+			seq = seq[:split] + '-' + seq[split:]
+		return unicode(seq)
+	else:
+		# generate a numeric seed
+		fields = rand.randint(1, 3)
+		if fields == 1:
+			# generate a five digit integer
+			return unicode(rand.randint(10000, 99999))
+		else:
+			# generate a sequence of 2 or 3 dash separated fields of integers 10-9999
+			parts = []
+			for i in xrange(fields):
+				power = rand.randint(1, 3)
+				parts.append(str(rand.randint(10 ** power, 10 ** (power + 1) - 1)))
+			return unicode('-'.join(parts))
 
 def generate_map_from_seed(seed):
 	"""

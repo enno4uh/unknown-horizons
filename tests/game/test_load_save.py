@@ -20,20 +20,21 @@
 # ###################################################
 
 import os
+import bz2
 import tempfile
 
 from horizons.command.building import Build
 from horizons.command.production import ToggleActive
 from horizons.command.unit import CreateUnit
-from horizons.constants import BUILDINGS, PRODUCTION, UNITS, COLLECTORS, RES
+from horizons.constants import BUILDINGS, PRODUCTION, UNITS, RES, GAME
 from horizons.util import WorldObject, Point
 from horizons.world.production.producer import Producer
-from horizons.component.collectingcompontent import CollectingComponent
+from horizons.component.collectingcomponent import CollectingComponent
 from horizons.component.storagecomponent import StorageComponent
 from horizons.world.units.collectors import Collector
 from horizons.scheduler import Scheduler
 
-from tests.game import game_test, new_session, settle, load_session
+from tests.game import game_test, new_session, settle, load_session, TEST_FIXTURES_DIR
 
 
 # utility
@@ -201,7 +202,6 @@ def test_settler_save_load():
 
 	settler = Build(BUILDINGS.RESIDENTIAL, 25, 22, island, settlement=settlement)(player)
 	assert settler
-	settler_worldid = settler.worldid
 
 	main_square = Build(BUILDINGS.MAIN_SQUARE, 23, 24, island, settlement=settlement)(player)
 	assert main_square
@@ -215,3 +215,64 @@ def test_settler_save_load():
 
 	# tile will contain ruin in case of failure
 	assert tile.object.id == BUILDINGS.RESIDENTIAL
+
+
+@game_test(manual_session=True)
+def test_savegame_upgrade():
+	"""Loads an old savegame and keeps it running for a while"""
+	fd, filename = tempfile.mkstemp()
+	os.close(fd)
+
+	path = os.path.join(TEST_FIXTURES_DIR, 'large.sqlite.bz2')
+	compressed_data = open(path, "r").read()
+	data = bz2.decompress( compressed_data )
+	f = open(filename, "w")
+	f.write(data)
+	f.close()
+
+	# check if loading and running fails
+	session = load_session(filename)
+	session.run(seconds=30)
+
+
+@game_test
+def test_settler_level_save_load(s, p):
+	"""
+	Verify that settler level up with save/load works
+	"""
+	for test_level in xrange(3): # test upgrade 0->1, 1->2 and 2->3
+		session, player = new_session()
+		settlement, island = settle(s)
+
+		settler = Build(BUILDINGS.RESIDENTIAL, 22, 22, island, settlement=settlement)(p)
+		settler.level += test_level
+		settler_worldid = settler.worldid
+		
+		# make it happy
+		inv = settler.get_component(StorageComponent).inventory
+		to_give = inv.get_free_space_for(RES.HAPPINESS)
+		inv.alter(RES.HAPPINESS, to_give)
+		level = settler.level
+
+		# wait for it to realize it's supposed to upgrade
+		s.run(seconds=GAME.INGAME_TICK_INTERVAL)
+
+		session = saveload(session)
+		settler = WorldObject.get_object_by_id(settler_worldid)
+		inv = settler.get_component(StorageComponent).inventory
+
+		# continue
+		s.run(seconds=GAME.INGAME_TICK_INTERVAL)
+
+		assert settler.level == level
+		# give upgrade res
+		inv.alter(RES.BOARDS, 100)
+		inv.alter(RES.BRICKS, 100)
+		
+		# give it max population
+		settler.inhabitants = settler.inhabitants_max		
+
+		s.run(seconds=GAME.INGAME_TICK_INTERVAL)
+
+		# should have leveled up
+		assert settler.level == level + 1

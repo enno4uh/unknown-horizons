@@ -23,7 +23,18 @@
 import functools
 
 from fife.extensions import pychan
+
 from horizons.gui.style import STYLES
+from horizons.messaging import GuiAction
+from horizons.util import Callback
+
+import horizons.main
+
+class RenameLabel(pychan.widgets.Label):
+	"""A regular label that signals that it will display a rename dialog when clicked upon (by changing the cursor)"""
+	pass # implementation added dynamically below
+class RenameImageButton(pychan.widgets.ImageButton):
+	pass # as above
 
 def handle_gcn_exception(e, msg=None):
 	"""Called for RuntimeErrors after gcn::exceptions that smell like guichan bugs.
@@ -42,6 +53,7 @@ def init_pychan():
 
 	# quick hack to allow up_image/down_image values to be unicode
 	# TODO solve this problem in a better way (e.g. passing str explicitly)
+	# or waiting for a fix of http://fife.trac.cvsdude.com/engine/ticket/701
 	from fife.extensions.pychan.properties import ImageProperty
 
 	def patch_imageproperty(func):
@@ -54,7 +66,6 @@ def init_pychan():
 	ImageProperty.__set__ = patch_imageproperty(ImageProperty.__set__)
 
 	# register custom widgets
-
 	from horizons.gui.widgets.inventory import Inventory
 	from horizons.gui.widgets.buysellinventory import BuySellInventory
 	from horizons.gui.widgets.imagefillstatusbutton import  ImageFillStatusButton
@@ -71,7 +82,7 @@ def init_pychan():
 			   Inventory, BuySellInventory, ImageFillStatusButton,
 			   ProgressBar, StepSlider, TabBG, ToggleImageButton,
 			   HealthWidget, StanceWidget, WeaponStorageWidget,
-	       AutoResizeContainer]
+	       AutoResizeContainer, RenameLabel, RenameImageButton]
 
 	for widget in widgets:
 		pychan.widgets.registerWidget(widget)
@@ -120,6 +131,11 @@ def init_pychan():
 			widget.requestFocus = catch_gcn_exception_decorator(widget.requestFocus)
 
 
+	setup_cursor_change_on_hover()
+
+	setup_trigger_signals_on_action()
+
+
 	# NOTE: there is a bug with the tuple notation: http://fife.trac.cvsdude.com/engine/ticket/656
 	# work around this here for now:
 	def conv(d):
@@ -143,8 +159,73 @@ def init_pychan():
 
 
 
+def setup_cursor_change_on_hover():
+
+	# set cursor to rename on hover for certain widgets
+	def set_cursor():
+		horizons.main.fife.set_cursor_image("rename")
+	def unset_cursor():
+		horizons.main.fife.set_cursor_image("default")
+
+	def make_cursor_change_on_hover_class(cls):
+		# this can't be a regular class since vanilla TextFields should have it by default
+		def disable_cursor_change_on_hover(self):
+			self.mapEvents({
+				self.name+'/mouseEntered/cursor' : None,
+				self.name+'/mouseExited/cursor' : None,
+				})
+
+		def enable_cursor_change_on_hover(self):
+			self.mapEvents({
+				self.name+'/mouseEntered/cursor' : set_cursor,
+				self.name+'/mouseExited/cursor' : unset_cursor,
+				})
+
+		def add_cursor_change_on_hover_init(func):
+			@functools.wraps(func)
+			def wrapper(self, *args, **kwargs):
+				func(self, *args, **kwargs)
+				enable_cursor_change_on_hover(self)
+			return wrapper
+
+		cls.__init__ = add_cursor_change_on_hover_init(cls.__init__)
+		cls.disable_cursor_change_on_hover = disable_cursor_change_on_hover
+		cls.enable_cursor_change_on_hover = enable_cursor_change_on_hover
+
+	make_cursor_change_on_hover_class( pychan.widgets.WIDGETS['TextField'] )
+	make_cursor_change_on_hover_class( RenameLabel )
+	make_cursor_change_on_hover_class( RenameImageButton )
+
+
+	# TODO: if the widget is hidden while the cursor is above it,
+	# there is no exited event. A possible workaround would be to check
+	# in short intervals whether the widget is still visible, possible also
+	# whether the mouse is still above it (the later would be necessary in
+	# case another widget is drawn above the original widget)
+	# Since that would be quite ugly, it should only be done when consulting
+	# pychan-savvy people yields no success.
+
+
+def setup_trigger_signals_on_action():
+	"""Make sure that every widget sends a signal when an action event occurs"""
+	def make_action_trigger_a_signal(cls):
+		def add_action_triggers_a_signal(func):
+			@functools.wraps(func)
+			def wrapper(self, *args, **kwargs):
+				func(self, *args, **kwargs)
+				self.capture(Callback(GuiAction.broadcast, self), "action", "action_listener")
+			return wrapper
+
+		cls.__init__ = add_action_triggers_a_signal( cls.__init__ )
+
+	make_action_trigger_a_signal(pychan.widgets.Widget)
+
+
 def get_button_event(button):
 	"""Returns the callback that is triggered when the button is clicked on.
+	If this should run in combination with --gui-log, call the returned event callback with parameters like this:
+		pychan.tools.applyOnlySuitable(callback, event=event, widget=widget)
+
 	@param button: pychan Button"""
 	try:
 		# try dialog action

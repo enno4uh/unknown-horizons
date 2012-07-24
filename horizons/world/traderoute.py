@@ -204,7 +204,7 @@ class TradeRoute(ChangeListener):
 		# the ship was blocked while it was already moving so try again
 		self.move_to_next_route_warehouse(advance_waypoint = False)
 
-	def move_to_next_route_warehouse(self, advance_waypoint = True):
+	def move_to_next_route_warehouse(self, advance_waypoint=True):
 		next_destination = self.get_next_destination(advance_waypoint)
 		if next_destination == None:
 			return
@@ -265,7 +265,7 @@ class TradeRoute(ChangeListener):
 
 	def load(self, db):
 		enabled, self.current_waypoint, self.wait_at_load, self.wait_at_unload = \
-			db("SELECT enabled, current_waypoint, wait_at_load, wait_at_unload " + \
+			db("SELECT enabled, current_waypoint, wait_at_load, wait_at_unload " +
 			   "FROM ship_route WHERE ship_id = ?", self.ship.worldid)[0]
 
 		query = "SELECT warehouse_id FROM ship_route_waypoint WHERE ship_id = ? ORDER BY waypoint_index"

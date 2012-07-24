@@ -22,11 +22,37 @@
 from horizons.gui.tabs import  ProductionOverviewTab, InventoryTab
 from horizons.constants import PRODUCTION
 from horizons.component.storagecomponent import StorageComponent
+from horizons.component.ambientsoundcomponent import AmbientSoundComponent
 from horizons.util.worldobject import WorldObject
 from horizons.world.production.producer import Producer
 
 
-class ResourceHandler(object):
+class ResourceTransferHandler(object):
+	"""Objects that can transfer resources. ResourceHandler and units with storages"""
+	def transfer_to_storageholder(self, amount, res_id, transfer_to, signal_errors=False):
+		"""Transfers amount of res_id to transfer_to.
+		@param transfer_to: worldid or object reference
+		@param signal_errors: whether to play an error sound in case the transfer completely failed (no res transfered)
+		@return: amount that was actually transfered (NOTE: this is different from the
+						 return value of inventory.alter, since here are 2 storages involved)
+		"""
+		try:
+			transfer_to = WorldObject.get_object_by_id( int(transfer_to) )
+		except TypeError: # transfer_to not an int, assume already obj
+			pass
+		# take res from self
+		ret = self.get_component(StorageComponent).inventory.alter(res_id, -amount)
+		# check if we were able to get the planed amount
+		ret = amount if amount < abs(ret) else abs(ret)
+		# put res to transfer_to
+		ret = transfer_to.get_component(StorageComponent).inventory.alter(res_id, amount-ret)
+		self.get_component(StorageComponent).inventory.alter(res_id, ret) # return resources that did not fit
+		actually_transfered = amount-ret
+		if signal_errors and actually_transfered == 0:
+			AmbientSoundComponent.play_special('error')
+		return actually_transfered
+
+class ResourceHandler(ResourceTransferHandler):
 	"""The ResourceHandler class acts as a basic class for describing objects
 	that handle resources. This means the objects can provide resources for
 	Collectors and have multiple productions. This is a base class, meaning
@@ -64,13 +90,17 @@ class ResourceHandler(object):
 			self.__incoming_collectors[0].cancel()
 
 	## INTERFACE
-	def get_consumed_resources(self):
+	def get_consumed_resources(self, include_inactive=False):
 		"""Returns the needed resources that are used by the productions
-		currently active."""
+		currently active. *include_inactive* will also include resources
+		used in a production line that is currently inactive."""
 		needed_res = set()
 		if self.has_component(Producer):
 			prod_comp = self.get_component(Producer)
-			for production in prod_comp._productions.itervalues():
+			productions = prod_comp._productions
+			if include_inactive:
+				productions.update(prod_comp._inactive_productions)
+			for production in productions.itervalues():
 				needed_res.update(production.get_consumed_resources().iterkeys())
 		return list(needed_res)
 
@@ -98,7 +128,7 @@ class ResourceHandler(object):
 		return list(consumed_res)
 
 	def get_currently_not_consumed_resources(self):
-		"""Needed, but not currenlty consumed resources.
+		"""Needed, but not currently consumed resources.
 		Opposite of get_currently_consumed_resources."""
 		# use set types since they support the proper operation
 		currently_consumed = frozenset(self.get_currently_consumed_resources())
@@ -107,8 +137,8 @@ class ResourceHandler(object):
 
 	def get_needed_resources(self):
 		"""Returns list of resources, where free space in the inventory exists."""
-		return [res for res in self.get_consumed_resources() if \
-						self.get_component(StorageComponent).inventory.get_free_space_for(res) > 0]
+		return [res for res in self.get_consumed_resources()
+		            if self.get_component(StorageComponent).inventory.get_free_space_for(res) > 0]
 
 	def add_incoming_collector(self, collector):
 		assert collector not in self.__incoming_collectors
@@ -172,25 +202,6 @@ class ResourceHandler(object):
 			produced_resources.add(res)
 
 		return produced_resources
-
-	def transfer_to_storageholder(self, amount, res_id, transfer_to):
-		"""Transfers amount of res_id to transfer_to.
-		@param transfer_to: worldid or object reference
-		@return: amount that was actually transfered (NOTE: this is different from the
-						 return value of inventory.alter, since here are 2 storages involved)
-		"""
-		try:
-			transfer_to = WorldObject.get_object_by_id( int(transfer_to) )
-		except TypeError: # transfer_to not an int, assume already obj
-			pass
-		# take res from self
-		ret = self.get_component(StorageComponent).inventory.alter(res_id, -amount)
-		# check if we were able to get the planed amount
-		ret = amount if amount < abs(ret) else abs(ret)
-		# put res to transfer_to
-		ret = transfer_to.get_component(StorageComponent).inventory.alter(res_id, amount-ret)
-		self.get_component(StorageComponent).inventory.alter(res_id, ret) # return resources that did not fit
-		return amount-ret
 
 class StorageResourceHandler(ResourceHandler):
 	"""Same as ResourceHandler, but for storage buildings such as warehouses.
