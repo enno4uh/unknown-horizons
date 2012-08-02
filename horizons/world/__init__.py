@@ -237,8 +237,8 @@ class World(BuildingOwner, WorldObject):
 
 			data = {'player1' : player1, 'player2' : player2}
 
-			self.session.ingame_gui.message_widget.add(
-			  x=None, y=None, string_id='DIPLOMACY_STATUS_'+old_state.upper()+"_"+new_state.upper(), message_dict=data)
+			self.session.ingame_gui.message_widget.add(point=None,
+                string_id='DIPLOMACY_STATUS_'+old_state.upper()+"_"+new_state.upper(), message_dict=data)
 
 		self.diplomacy.add_diplomacy_status_changed_listener(notify_change)
 
@@ -334,7 +334,7 @@ class World(BuildingOwner, WorldObject):
 			# this would be the case if the savegame originates from a different installation.
 			# if there's more than one of this kind, we can't be sure what to select.
 			# TODO: create interface for selecting player, if we want this
-			if(len(human_players) == 1):
+			if len(human_players) == 1:
 				# exactly one player, we can quite safely use this one
 				self.player = human_players[0]
 			elif not human_players and self.players:
@@ -432,7 +432,7 @@ class World(BuildingOwner, WorldObject):
 			self.pirate = Pirate(self.session, 99998, "Captain Blackbeard", Color())
 
 		# Fire a message for new world creation
-		self.session.ingame_gui.message_widget.add(x=None, y=None, string_id='NEW_WORLD')
+		self.session.ingame_gui.message_widget.add(point=None, string_id='NEW_WORLD')
 		assert ret_coords is not None, "Return coords are None. No players loaded?"
 		return ret_coords
 
